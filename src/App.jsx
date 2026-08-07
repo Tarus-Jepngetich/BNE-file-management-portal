@@ -1,16 +1,27 @@
+import { BrowserRouter, Routes, Route } from "react-router-dom"
+
+import Login from "./pages/Login"
+import Dashboard from "./pages/Dashboard"
+import Members from "./pages/Members"
+import Meetings from "./pages/Meetings"
+import Projects from "./pages/Projects"
+import CompanyDocuments from "./pages/CompanyDocuments"
+
 function App() {
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-5xl font-bold text-white">
-          BNE Construction Ltd
-        </h1>
-
-        <p className="mt-4 text-lg text-slate-400">
-          Company Management Portal
-        </p>
-      </div>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route path="/" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/members" element={<Members />} />
+        <Route path="/meetings" element={<Meetings />} />
+        <Route path="/projects" element={<Projects />} />
+        <Route
+          path="/company-documents"
+          element={<CompanyDocuments />}
+        />
+      </Routes>
+    </BrowserRouter>
   )
 }
 
