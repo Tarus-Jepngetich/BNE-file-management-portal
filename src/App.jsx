@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom"
 import Login from "./pages/Login"
 import Dashboard from "./pages/Dashboard"
 import Members from "./pages/Members"
+import MemberProfile from "./pages/MemberProfile"
 import Meetings from "./pages/Meetings"
 import Projects from "./pages/Projects"
 import CompanyDocuments from "./pages/CompanyDocuments"
@@ -16,9 +17,18 @@ function App() {
 
         <Route element={<DashboardLayout />}>
           <Route path="/dashboard" element={<Dashboard />} />
+
           <Route path="/members" element={<Members />} />
+
+          <Route
+            path="/members/:memberId"
+            element={<MemberProfile />}
+          />
+
           <Route path="/meetings" element={<Meetings />} />
+
           <Route path="/projects" element={<Projects />} />
+
           <Route
             path="/company-documents"
             element={<CompanyDocuments />}
