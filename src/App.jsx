@@ -11,20 +11,22 @@ import Dashboard from "./pages/Dashboard"
 import Members from "./pages/Members"
 import MemberProfile from "./pages/MemberProfile"
 import Meetings from "./pages/Meetings"
+import MeetingDetails from "./pages/MeetingDetails"
 import Projects from "./pages/Projects"
 import CompanyDocuments from "./pages/CompanyDocuments"
 import AccountRequests from "./pages/AccountRequests"
+import FinancialApprovals from "./pages/FinancialApprovals"
 
 import DashboardLayout from "./layouts/DashboardLayout"
+
 import ProtectedRoute from "./components/ProtectedRoute"
+import RoleRoute from "./components/RoleRoute"
 
 function App() {
   return (
     <BrowserRouter>
-
       <Routes>
-
-        {/* PUBLIC */}
+        {/* PUBLIC ROUTES */}
         <Route
           path="/"
           element={<Login />}
@@ -35,17 +37,11 @@ function App() {
           element={<Register />}
         />
 
-
         {/* PROTECTED PORTAL */}
-        <Route
-          element={<ProtectedRoute />}
-        >
+        <Route element={<ProtectedRoute />}>
+          <Route element={<DashboardLayout />}>
 
-          <Route
-            element={
-              <DashboardLayout />
-            }
-          >
+            {/* ALL APPROVED MEMBERS */}
 
             <Route
               path="/dashboard"
@@ -59,21 +55,17 @@ function App() {
 
             <Route
               path="/members/:memberId"
-              element={
-                <MemberProfile />
-              }
-            />
-
-            <Route
-              path="/account-requests"
-              element={
-                <AccountRequests />
-              }
+              element={<MemberProfile />}
             />
 
             <Route
               path="/meetings"
               element={<Meetings />}
+            />
+
+            <Route
+              path="/meetings/:meetingId"
+              element={<MeetingDetails />}
             />
 
             <Route
@@ -83,17 +75,49 @@ function App() {
 
             <Route
               path="/company-documents"
-              element={
-                <CompanyDocuments />
-              }
+              element={<CompanyDocuments />}
             />
 
+
+            {/* MAIN ADMIN ONLY */}
+
+            <Route
+              element={
+                <RoleRoute
+                  allowedRoles={[
+                    "main_admin",
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="/account-requests"
+                element={<AccountRequests />}
+              />
+            </Route>
+
+
+            {/* MAIN ADMIN + TREASURER */}
+
+            <Route
+              element={
+                <RoleRoute
+                  allowedRoles={[
+                    "main_admin",
+                    "treasurer",
+                  ]}
+                />
+              }
+            >
+              <Route
+                path="/financial-approvals"
+                element={<FinancialApprovals />}
+              />
+            </Route>
+
           </Route>
-
         </Route>
-
       </Routes>
-
     </BrowserRouter>
   )
 }

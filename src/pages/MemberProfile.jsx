@@ -1,376 +1,713 @@
-import { useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { useParams } from "react-router-dom"
+
 import {
-  ArrowLeft,
   UserRound,
-  CreditCard,
-  Wallet,
-  FileImage,
   Plus,
+  LoaderCircle,
+  Receipt,
   X,
   Upload,
-  Eye,
+  ExternalLink,
+  Clock3,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react"
 
-const members = [
-  {
-    id: "abel-kiprop",
-    name: "Abel Kiprop",
-    role: "Director",
-  },
-  {
-    id: "mercy-tarus",
-    name: "Mercy Tarus",
-    role: "Director",
-  },
-  {
-    id: "samuel-kiptoo",
-    name: "Samuel Kiptoo",
-    role: "Director",
-  },
-  {
-    id: "cosmas-kipketer",
-    name: "Cosmas Kipketer",
-    role: "Director",
-  },
-  {
-    id: "josphat-kipkirui",
-    name: "Josphat Kipkirui",
-    role: "Director",
-  },
-  {
-    id: "elizabeth-chebichii",
-    name: "Elizabeth Chebichii",
-    role: "Director",
-  },
-  {
-    id: "sharon-chepkirui",
-    name: "Sharon Chepkirui",
-    role: "Director",
-  },
-  {
-    id: "dennis-kipkorir",
-    name: "Dennis Kipkorir",
-    role: "Director",
-  },
-]
+import { supabase } from "../lib/supabase"
+import { useAuth } from "../context/AuthContext"
 
 function MemberProfile() {
   const { memberId } = useParams()
 
-  const member = members.find((item) => item.id === memberId)
+  const {
+    user,
+    member: loggedInMember,
+  } = useAuth()
 
-  const [showContributionForm, setShowContributionForm] = useState(false)
+  const [member, setMember] =
+    useState(null)
 
-  const [contributions, setContributions] = useState([])
+  const [contributions, setContributions] =
+    useState([])
 
-  const [formData, setFormData] = useState({
-    amount: "",
-    type: "",
-    date: "",
-    paymentMethod: "",
-    reference: "",
-    notes: "",
-    evidence: null,
-  })
+  const [loading, setLoading] =
+    useState(true)
 
-  if (!member) {
-    return (
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          Member not found
-        </h1>
+  const [error, setError] =
+    useState("")
 
-        <Link
-          to="/members"
-          className="mt-4 inline-block text-[#9b7c3f]"
-        >
-          Back to members
-        </Link>
-      </div>
-    )
+  const [message, setMessage] =
+    useState("")
+
+  const [showModal, setShowModal] =
+    useState(false)
+
+  const [saving, setSaving] =
+    useState(false)
+
+  const [form, setForm] =
+    useState({
+      amount: "",
+      contributionType: "",
+      paymentDate: "",
+      paymentMethod: "",
+      transactionReference: "",
+      notes: "",
+    })
+
+  const [evidenceFile, setEvidenceFile] =
+    useState(null)
+
+  useEffect(() => {
+    loadPage()
+  }, [memberId])
+
+  const loadPage = async () => {
+    try {
+      setLoading(true)
+      setError("")
+
+      const [
+        memberResult,
+        contributionResult,
+      ] = await Promise.all([
+        supabase
+          .from("members")
+          .select(`
+            id,
+            full_name,
+            email,
+            company_position,
+            portal_role,
+            account_status,
+            profile_photo_path,
+            id_document_path
+          `)
+          .eq("id", memberId)
+          .single(),
+
+        supabase
+          .from("contributions")
+          .select(`
+            id,
+            amount,
+            contribution_type,
+            payment_date,
+            payment_method,
+            transaction_reference,
+            notes,
+            evidence_path,
+            approval_status,
+            rejection_reason,
+            created_at
+          `)
+          .eq("member_id", memberId)
+          .order("payment_date", {
+            ascending: false,
+          }),
+      ])
+
+      if (memberResult.error) {
+        throw memberResult.error
+      }
+
+      if (contributionResult.error) {
+        throw contributionResult.error
+      }
+
+      setMember(memberResult.data)
+
+      setContributions(
+        contributionResult.data || []
+      )
+    } catch (error) {
+      console.error(
+        "Member profile error:",
+        error
+      )
+
+      setError(
+        error.message ||
+        "Unable to load member profile."
+      )
+    } finally {
+      setLoading(false)
+    }
   }
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
+  const handleChange = (event) => {
+    const {
+      name,
+      value,
+    } = event.target
 
-    setFormData((previous) => ({
+    setForm((previous) => ({
       ...previous,
       [name]: value,
     }))
   }
 
-  const handleEvidenceChange = (e) => {
-    const file = e.target.files[0]
-
-    if (!file) return
-
-    setFormData((previous) => ({
-      ...previous,
-      evidence: file,
-    }))
-  }
-
-  const handleSubmitContribution = (e) => {
-    e.preventDefault()
-
-    const newContribution = {
-      id: Date.now(),
-      ...formData,
-      amount: Number(formData.amount),
-      recordedBy: "Main Admin",
-    }
-
-    setContributions((previous) => [
-      newContribution,
-      ...previous,
-    ])
-
-    setFormData({
+  const resetForm = () => {
+    setForm({
       amount: "",
-      type: "",
-      date: "",
+      contributionType: "",
+      paymentDate: "",
       paymentMethod: "",
-      reference: "",
+      transactionReference: "",
       notes: "",
-      evidence: null,
     })
 
-    setShowContributionForm(false)
+    setEvidenceFile(null)
   }
 
-  const totalContribution = contributions.reduce(
-    (total, item) => total + item.amount,
-    0
-  )
+  const handleCloseModal = () => {
+    if (saving) return
+
+    setShowModal(false)
+    resetForm()
+  }
+
+  const uploadEvidence =
+    async () => {
+      if (!evidenceFile) {
+        return null
+      }
+
+      const extension =
+        evidenceFile.name
+          .split(".")
+          .pop()
+          ?.toLowerCase() || "file"
+
+      const filePath =
+        `${memberId}/${crypto.randomUUID()}.${extension}`
+
+      const {
+        error,
+      } = await supabase.storage
+        .from(
+          "contribution-evidence"
+        )
+        .upload(
+          filePath,
+          evidenceFile,
+          {
+            cacheControl: "3600",
+            upsert: false,
+          }
+        )
+
+      if (error) {
+        throw error
+      }
+
+      return filePath
+    }
+
+  const handleSubmit =
+    async (event) => {
+      event.preventDefault()
+
+      try {
+        setSaving(true)
+        setError("")
+        setMessage("")
+
+        if (!user) {
+          throw new Error(
+            "You must be logged in."
+          )
+        }
+
+        if (
+          !form.amount ||
+          Number(form.amount) <= 0
+        ) {
+          throw new Error(
+            "Enter a valid contribution amount."
+          )
+        }
+
+        if (
+          !form.contributionType.trim()
+        ) {
+          throw new Error(
+            "Enter the contribution type."
+          )
+        }
+
+        if (!form.paymentDate) {
+          throw new Error(
+            "Select the payment date."
+          )
+        }
+
+        let evidencePath = null
+
+        if (evidenceFile) {
+          evidencePath =
+            await uploadEvidence()
+        }
+
+        const {
+          error,
+        } = await supabase
+          .from("contributions")
+          .insert({
+            member_id: memberId,
+
+            amount:
+              Number(form.amount),
+
+            contribution_type:
+              form.contributionType.trim(),
+
+            payment_date:
+              form.paymentDate,
+
+            payment_method:
+              form.paymentMethod.trim() ||
+              null,
+
+            transaction_reference:
+              form.transactionReference.trim() ||
+              null,
+
+            notes:
+              form.notes.trim() ||
+              null,
+
+            evidence_path:
+              evidencePath,
+
+            submitted_by:
+              user.id,
+
+            approval_status:
+              "pending",
+
+            approved_by:
+              null,
+
+            approved_at:
+              null,
+          })
+
+        if (error) {
+          throw error
+        }
+
+        setMessage(
+          "Contribution submitted successfully and is waiting for approval."
+        )
+
+        setShowModal(false)
+        resetForm()
+
+        await loadPage()
+      } catch (error) {
+        console.error(
+          "Contribution submission error:",
+          error
+        )
+
+        setError(
+          error.message ||
+          "Unable to submit contribution."
+        )
+      } finally {
+        setSaving(false)
+      }
+    }
+
+  const handleViewEvidence =
+    async (path) => {
+      try {
+        setError("")
+
+        if (!path) {
+          setError(
+            "No payment evidence is attached to this contribution."
+          )
+          return
+        }
+
+        const {
+          data,
+          error,
+        } = await supabase.storage
+          .from(
+            "contribution-evidence"
+          )
+          .createSignedUrl(
+            path,
+            60
+          )
+
+        if (error) {
+          throw error
+        }
+
+        window.open(
+          data.signedUrl,
+          "_blank",
+          "noopener,noreferrer"
+        )
+      } catch (error) {
+        console.error(
+          "Evidence error:",
+          error
+        )
+
+        setError(
+          error.message ||
+          "Unable to open evidence."
+        )
+      }
+    }
+
+  const formatCurrency =
+    (amount) => {
+      return new Intl.NumberFormat(
+        "en-KE",
+        {
+          style: "currency",
+          currency: "KES",
+          maximumFractionDigits: 0,
+        }
+      ).format(
+        Number(amount) || 0
+      )
+    }
+
+  const formatDate =
+    (date) => {
+      if (!date) {
+        return "—"
+      }
+
+      return new Date(
+        `${date}T00:00:00`
+      ).toLocaleDateString(
+        "en-GB",
+        {
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+        }
+      )
+    }
+
+  const getStatusStyle =
+    (status) => {
+      if (status === "approved") {
+        return {
+          label: "Approved",
+          className:
+            "bg-green-50 text-green-700",
+          icon: CheckCircle2,
+        }
+      }
+
+      if (status === "rejected") {
+        return {
+          label: "Rejected",
+          className:
+            "bg-red-50 text-red-700",
+          icon: XCircle,
+        }
+      }
+
+      return {
+        label: "Pending",
+        className:
+          "bg-amber-50 text-amber-700",
+        icon: Clock3,
+      }
+    }
+
+  const approvedTotal =
+    contributions
+      .filter(
+        (item) =>
+          item.approval_status ===
+          "approved"
+      )
+      .reduce(
+        (total, item) =>
+          total +
+          Number(item.amount),
+        0
+      )
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[450px] items-center justify-center">
+        <div className="text-center">
+          <LoaderCircle
+            size={34}
+            className="mx-auto animate-spin text-[#9b7c3f]"
+          />
+
+          <p className="mt-3 text-sm text-slate-500">
+            Loading member profile...
+          </p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!member) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 p-8">
+        <h1 className="text-xl font-bold text-red-700">
+          Member not found
+        </h1>
+      </div>
+    )
+  }
 
   return (
     <div>
-      <Link
-        to="/members"
-        className="mb-6 inline-flex items-center gap-2 text-sm font-medium text-slate-500 transition hover:text-[#9b7c3f]"
-      >
-        <ArrowLeft size={18} />
-        Back to Members
-      </Link>
-
-      <div className="rounded-2xl border border-slate-200 bg-white p-6">
-        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-5">
-            <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#f1eadc] text-[#9b7c3f]">
-              <UserRound size={40} />
-            </div>
-
-            <div>
-              <h1 className="text-3xl font-bold text-slate-900">
-                {member.name}
-              </h1>
-
-              <p className="mt-1 text-slate-500">
-                {member.role}
-              </p>
-
-              <span className="mt-3 inline-flex rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-700">
-                Active Member
-              </span>
-            </div>
+      <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex items-center gap-5">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#f1eadc] text-[#9b7c3f]">
+            <UserRound size={42} />
           </div>
 
-          <button className="rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-[#c5a66a] hover:text-[#9b7c3f]">
-            Edit Profile
-          </button>
-        </div>
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-6">
-          <div className="flex items-center gap-3">
-            <CreditCard
-              size={20}
-              className="text-[#9b7c3f]"
-            />
-
-            <h2 className="text-lg font-semibold text-slate-900">
-              ID Document
-            </h2>
-          </div>
-
-          <p className="mt-3 text-sm text-slate-500">
-            Store and manage this member&apos;s identification document.
-          </p>
-
-          <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
-            <CreditCard
-              size={30}
-              className="mx-auto text-slate-400"
-            />
-
-            <p className="mt-3 text-sm font-medium text-slate-600">
-              No ID uploaded
-            </p>
-
-            <button className="mt-4 rounded-lg bg-[#111315] px-4 py-2 text-sm font-semibold text-white">
-              Upload ID
-            </button>
-          </div>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-6">
-          <div className="flex items-center gap-3">
-            <Wallet
-              size={20}
-              className="text-[#9b7c3f]"
-            />
-
-            <h2 className="text-lg font-semibold text-slate-900">
-              Contributions
-            </h2>
-          </div>
-
-          <p className="mt-3 text-sm text-slate-500">
-            Total verified contributions made by this member.
-          </p>
-
-          <p className="mt-8 text-3xl font-bold text-slate-900">
-            KSh {totalContribution.toLocaleString()}
-          </p>
-
-          <p className="mt-2 text-xs text-slate-400">
-            {contributions.length} contribution record
-            {contributions.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 bg-white p-6">
-          <div className="flex items-center gap-3">
-            <FileImage
-              size={20}
-              className="text-[#9b7c3f]"
-            />
-
-            <h2 className="text-lg font-semibold text-slate-900">
-              Payment Evidence
-            </h2>
-          </div>
-
-          <p className="mt-3 text-sm text-slate-500">
-            Bank screenshots and payment evidence are attached to each
-            contribution.
-          </p>
-
-          <div className="mt-7 rounded-xl bg-slate-50 p-5 text-center">
-            <p className="text-sm text-slate-400">
-              {
-                contributions.filter((item) => item.evidence)
-                  .length
-              }{" "}
-              evidence file(s) attached.
-            </p>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 rounded-2xl border border-slate-200 bg-white">
-        <div className="flex flex-col gap-4 border-b border-slate-100 p-6 md:flex-row md:items-center md:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900">
-              Contribution History
-            </h2>
-
-            <p className="mt-1 text-sm text-slate-500">
-              Contributions and payment evidence recorded for{" "}
-              {member.name}.
+            <p className="text-sm font-semibold uppercase tracking-wider text-[#9b7c3f]">
+              Member Profile
             </p>
+
+            <h1 className="mt-1 text-3xl font-bold text-slate-900">
+              {member.full_name}
+            </h1>
+
+            <p className="mt-1 text-slate-500">
+              {member.company_position}
+            </p>
+
+            {member.email && (
+              <p className="mt-1 text-sm text-slate-400">
+                {member.email}
+              </p>
+            )}
           </div>
-
-          <button
-            onClick={() => setShowContributionForm(true)}
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-4 py-3 text-sm font-semibold text-[#111315] transition hover:bg-[#d2b77d]"
-          >
-            <Plus size={18} />
-            Add Contribution
-          </button>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px]">
-            <thead className="bg-slate-50">
-              <tr className="text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-6 py-4">Date</th>
-                <th className="px-6 py-4">Type</th>
-                <th className="px-6 py-4">Amount</th>
-                <th className="px-6 py-4">Payment</th>
-                <th className="px-6 py-4">Reference</th>
-                <th className="px-6 py-4">Evidence</th>
-                <th className="px-6 py-4">Recorded By</th>
-              </tr>
-            </thead>
+        <button
+          onClick={() =>
+            setShowModal(true)
+          }
+          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 font-semibold text-[#111315] transition hover:bg-[#d2b77d]"
+        >
+          <Plus size={18} />
 
-            <tbody>
-              {contributions.length === 0 ? (
-                <tr>
-                  <td
-                    colSpan="7"
-                    className="px-6 py-14 text-center text-sm text-slate-400"
-                  >
-                    No contribution records yet.
-                  </td>
-                </tr>
-              ) : (
-                contributions.map((contribution) => (
-                  <tr
-                    key={contribution.id}
-                    className="border-t border-slate-100"
-                  >
-                    <td className="px-6 py-4 text-sm text-slate-600">
-                      {contribution.date}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm text-slate-600">
-                      {contribution.type}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm font-semibold text-slate-900">
-                      KSh{" "}
-                      {contribution.amount.toLocaleString()}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm text-slate-600">
-                      {contribution.paymentMethod ||
-                        "Not specified"}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm text-slate-600">
-                      {contribution.reference || "—"}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      {contribution.evidence ? (
-                        <span className="inline-flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">
-                          <Eye size={15} />
-                          {contribution.evidence.name}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-slate-400">
-                          No evidence
-                        </span>
-                      )}
-                    </td>
-
-                    <td className="px-6 py-4 text-sm text-slate-600">
-                      {contribution.recordedBy}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+          Add Contribution
+        </button>
       </div>
 
-      {showContributionForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-8">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl">
+      {error && (
+        <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      )}
+
+      {message && (
+        <div className="mt-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+          {message}
+        </div>
+      )}
+
+      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+        <SummaryCard
+          label="Approved Contributions"
+          value={formatCurrency(
+            approvedTotal
+          )}
+        />
+
+        <SummaryCard
+          label="Total Records"
+          value={
+            contributions.length
+          }
+        />
+
+        <SummaryCard
+          label="Evidence Files"
+          value={
+            contributions.filter(
+              (item) =>
+                item.evidence_path
+            ).length
+          }
+        />
+      </div>
+
+      <div className="mt-8 rounded-2xl border border-slate-200 bg-white">
+        <div className="border-b border-slate-200 px-6 py-5">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Contribution History
+          </h2>
+
+          <p className="mt-1 text-sm text-slate-500">
+            Approved, pending and rejected contribution records.
+          </p>
+        </div>
+
+        {contributions.length === 0 ? (
+          <div className="p-12 text-center">
+            <Receipt
+              size={36}
+              className="mx-auto text-slate-300"
+            />
+
+            <h3 className="mt-4 font-semibold text-slate-900">
+              No contributions yet
+            </h3>
+
+            <p className="mt-2 text-sm text-slate-500">
+              Add the first contribution for this member.
+            </p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-6 py-4">
+                    Date
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Type
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Amount
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Reference
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Status
+                  </th>
+
+                  <th className="px-6 py-4">
+                    Evidence
+                  </th>
+                </tr>
+              </thead>
+
+              <tbody className="divide-y divide-slate-100">
+                {contributions.map(
+                  (contribution) => {
+                    const status =
+                      getStatusStyle(
+                        contribution.approval_status
+                      )
+
+                    const StatusIcon =
+                      status.icon
+
+                    return (
+                      <tr
+                        key={
+                          contribution.id
+                        }
+                        className="text-sm"
+                      >
+                        <td className="px-6 py-4 text-slate-600">
+                          {formatDate(
+                            contribution.payment_date
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 font-medium text-slate-900">
+                          {
+                            contribution.contribution_type
+                          }
+                        </td>
+
+                        <td className="px-6 py-4 font-semibold text-slate-900">
+                          {formatCurrency(
+                            contribution.amount
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-slate-600">
+                          {
+                            contribution.transaction_reference ||
+                            "—"
+                          }
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${status.className}`}
+                          >
+                            <StatusIcon
+                              size={13}
+                            />
+
+                            {status.label}
+                          </span>
+
+                          {contribution.approval_status ===
+                            "rejected" &&
+                            contribution.rejection_reason && (
+                              <p className="mt-2 max-w-xs text-xs text-red-500">
+                                {
+                                  contribution.rejection_reason
+                                }
+                              </p>
+                            )}
+                        </td>
+
+                        <td className="px-6 py-4">
+                          {contribution.evidence_path ? (
+                            <button
+                              onClick={() =>
+                                handleViewEvidence(
+                                  contribution.evidence_path
+                                )
+                              }
+                              className="inline-flex items-center gap-2 text-sm font-semibold text-[#9b7c3f] hover:underline"
+                            >
+                              <Receipt
+                                size={16}
+                              />
+
+                              View
+
+                              <ExternalLink
+                                size={13}
+                              />
+                            </button>
+                          ) : (
+                            <span className="text-slate-400">
+                              —
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  }
+                )}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {showModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
+          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
               <div>
                 <h2 className="text-xl font-bold text-slate-900">
@@ -378,240 +715,228 @@ function MemberProfile() {
                 </h2>
 
                 <p className="mt-1 text-sm text-slate-500">
-                  Record a contribution for {member.name}.
+                  Record a contribution for {member.full_name}.
                 </p>
               </div>
 
               <button
-                onClick={() =>
-                  setShowContributionForm(false)
+                onClick={
+                  handleCloseModal
                 }
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                disabled={saving}
+                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
               >
-                <X size={22} />
+                <X size={20} />
               </button>
             </div>
 
             <form
-              onSubmit={handleSubmitContribution}
+              onSubmit={
+                handleSubmit
+              }
               className="space-y-5 p-6"
             >
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Amount
-                </label>
-
-                <div className="flex overflow-hidden rounded-xl border border-slate-200">
-                  <span className="flex items-center bg-slate-50 px-4 text-sm font-medium text-slate-500">
-                    KSh
-                  </span>
-
-                  <input
-                    type="number"
-                    name="amount"
-                    value={formData.amount}
-                    onChange={handleChange}
-                    min="1"
-                    placeholder="500000"
-                    required
-                    className="w-full px-4 py-3 text-sm text-slate-900 outline-none"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Contribution Type
-                  </label>
-
-                  <select
-                    name="type"
-                    value={formData.type}
-                    onChange={handleChange}
-                    required
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#c5a66a]"
-                  >
-                    <option value="">
-                      Select type
-                    </option>
-
-                    <option value="Deposit">
-                      Deposit
-                    </option>
-
-                    <option value="Goodwill">
-                      Goodwill
-                    </option>
-
-                    <option value="Land Payment">
-                      Land Payment
-                    </option>
-
-                    <option value="Project Contribution">
-                      Project Contribution
-                    </option>
-
-                    <option value="Service Payment">
-                      Service Payment
-                    </option>
-
-                    <option value="Other">
-                      Other
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Payment Date
-                  </label>
-
-                  <input
-                    type="date"
-                    name="date"
-                    value={formData.date}
-                    onChange={handleChange}
-                    required
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#c5a66a]"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Payment Method
-                  </label>
-
-                  <select
-                    name="paymentMethod"
-                    value={formData.paymentMethod}
-                    onChange={handleChange}
-                    className="w-full rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-900 outline-none focus:border-[#c5a66a]"
-                  >
-                    <option value="">
-                      Select method
-                    </option>
-
-                    <option value="Bank Transfer">
-                      Bank Transfer
-                    </option>
-
-                    <option value="M-Pesa">
-                      M-Pesa
-                    </option>
-
-                    <option value="Cash">
-                      Cash
-                    </option>
-
-                    <option value="Cheque">
-                      Cheque
-                    </option>
-
-                    <option value="Other">
-                      Other
-                    </option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Transaction / Reference
-                  </label>
-
-                  <input
-                    type="text"
-                    name="reference"
-                    value={formData.reference}
-                    onChange={handleChange}
-                    placeholder="Transaction reference"
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#c5a66a]"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Notes
-                </label>
-
-                <textarea
-                  name="notes"
-                  value={formData.notes}
-                  onChange={handleChange}
-                  rows="4"
-                  placeholder="Add any notes about this contribution..."
-                  className="w-full resize-none rounded-xl border border-slate-200 px-4 py-3 text-sm text-slate-900 outline-none placeholder:text-slate-400 focus:border-[#c5a66a]"
+              <div className="grid gap-5 md:grid-cols-2">
+                <Input
+                  label="Amount"
+                  name="amount"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={
+                    handleChange
+                  }
+                  placeholder="500000"
+                  required
                 />
-              </div>
 
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">
-                  Payment Evidence
-                </label>
+                <Input
+                  label="Contribution Type"
+                  name="contributionType"
+                  value={
+                    form.contributionType
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  placeholder="Land Deposit"
+                  required
+                />
 
-                <label className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 p-8 text-center transition hover:border-[#c5a66a]">
-                  <Upload
-                    size={28}
-                    className="text-slate-400"
+                <Input
+                  label="Payment Date"
+                  name="paymentDate"
+                  type="date"
+                  value={
+                    form.paymentDate
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  required
+                />
+
+                <Input
+                  label="Payment Method"
+                  name="paymentMethod"
+                  value={
+                    form.paymentMethod
+                  }
+                  onChange={
+                    handleChange
+                  }
+                  placeholder="Bank Transfer"
+                />
+
+                <div className="md:col-span-2">
+                  <Input
+                    label="Transaction / Reference Number"
+                    name="transactionReference"
+                    value={
+                      form.transactionReference
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    placeholder="Transaction reference"
                   />
+                </div>
 
-                  {formData.evidence ? (
-                    <>
-                      <p className="mt-3 text-sm font-semibold text-slate-700">
-                        {formData.evidence.name}
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Notes
+                  </label>
+
+                  <textarea
+                    name="notes"
+                    value={form.notes}
+                    onChange={
+                      handleChange
+                    }
+                    rows={4}
+                    placeholder="Optional notes..."
+                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#c5a66a]"
+                  />
+                </div>
+
+                <div className="md:col-span-2">
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Payment Evidence
+                  </label>
+
+                  <label className="flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 transition hover:border-[#c5a66a]">
+                    <Upload
+                      size={22}
+                      className="text-[#9b7c3f]"
+                    />
+
+                    <div>
+                      <p className="text-sm font-semibold text-slate-700">
+                        {evidenceFile
+                          ? evidenceFile.name
+                          : "Choose screenshot, image or PDF"}
                       </p>
 
                       <p className="mt-1 text-xs text-slate-400">
-                        Click to select another file
+                        Stored privately in Supabase Storage
                       </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="mt-3 text-sm font-medium text-slate-600">
-                        Upload bank screenshot or payment
-                        evidence
-                      </p>
+                    </div>
 
-                      <p className="mt-1 text-xs text-slate-400">
-                        JPG, PNG or PDF
-                      </p>
-                    </>
-                  )}
-
-                  <input
-                    type="file"
-                    accept="image/*,.pdf"
-                    onChange={handleEvidenceChange}
-                    className="hidden"
-                  />
-                </label>
+                    <input
+                      type="file"
+                      accept="image/*,.pdf"
+                      onChange={(event) =>
+                        setEvidenceFile(
+                          event.target
+                            .files?.[0] ||
+                            null
+                        )
+                      }
+                      className="hidden"
+                    />
+                  </label>
+                </div>
               </div>
 
-              <div className="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:justify-end">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                <p className="text-sm text-amber-700">
+                  This contribution will be submitted as Pending. Only an approved Treasurer or Main Admin can approve it.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowContributionForm(false)
+                  onClick={
+                    handleCloseModal
                   }
-                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                  disabled={saving}
+                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700"
                 >
                   Cancel
                 </button>
 
                 <button
                   type="submit"
-                  className="rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-semibold text-[#111315] transition hover:bg-[#d2b77d]"
+                  disabled={saving}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-semibold text-[#111315] transition hover:bg-[#d2b77d] disabled:opacity-50"
                 >
-                  Save Contribution
+                  {saving && (
+                    <LoaderCircle
+                      size={17}
+                      className="animate-spin"
+                    />
+                  )}
+
+                  {saving
+                    ? "Submitting..."
+                    : "Submit Contribution"}
                 </button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <div className="mt-4 text-xs text-slate-400">
+        Logged in as {loggedInMember?.full_name}
+      </div>
+    </div>
+  )
+}
+
+function SummaryCard({
+  label,
+  value,
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-6">
+      <p className="text-sm text-slate-500">
+        {label}
+      </p>
+
+      <p className="mt-2 text-2xl font-bold text-slate-900">
+        {value}
+      </p>
+    </div>
+  )
+}
+
+function Input({
+  label,
+  ...props
+}) {
+  return (
+    <div>
+      <label className="mb-2 block text-sm font-medium text-slate-700">
+        {label}
+      </label>
+
+      <input
+        {...props}
+        className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#c5a66a]"
+      />
     </div>
   )
 }
