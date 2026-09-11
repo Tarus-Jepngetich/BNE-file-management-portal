@@ -1,7 +1,7 @@
 import {
   BrowserRouter,
-  Routes,
   Route,
+  Routes,
 } from "react-router-dom"
 
 import Login from "./pages/Login"
@@ -10,23 +10,32 @@ import Register from "./pages/Register"
 import Dashboard from "./pages/Dashboard"
 import Members from "./pages/Members"
 import MemberProfile from "./pages/MemberProfile"
-import Meetings from "./pages/Meetings"
-import MeetingDetails from "./pages/MeetingDetails"
-import Projects from "./pages/Projects"
-import CompanyDocuments from "./pages/CompanyDocuments"
+
 import AccountRequests from "./pages/AccountRequests"
 import FinancialApprovals from "./pages/FinancialApprovals"
+
+import Meetings from "./pages/Meetings"
+import MeetingDetails from "./pages/MeetingDetails"
+
+import Projects from "./pages/Projects"
+import ProjectDetails from "./pages/ProjectDetails"
+
+import CompanyDocuments from "./pages/CompanyDocuments"
 
 import DashboardLayout from "./layouts/DashboardLayout"
 
 import ProtectedRoute from "./components/ProtectedRoute"
 import RoleRoute from "./components/RoleRoute"
 
+
 function App() {
   return (
     <BrowserRouter>
+
       <Routes>
-        {/* PUBLIC ROUTES */}
+
+        {/* PUBLIC */}
+
         <Route
           path="/"
           element={<Login />}
@@ -37,16 +46,24 @@ function App() {
           element={<Register />}
         />
 
-        {/* PROTECTED PORTAL */}
-        <Route element={<ProtectedRoute />}>
-          <Route element={<DashboardLayout />}>
 
-            {/* ALL APPROVED MEMBERS */}
+        {/* APPROVED USERS */}
+
+        <Route
+          element={<ProtectedRoute />}
+        >
+
+          <Route
+            element={<DashboardLayout />}
+          >
 
             <Route
               path="/dashboard"
               element={<Dashboard />}
             />
+
+
+            {/* MEMBERS */}
 
             <Route
               path="/members"
@@ -58,6 +75,9 @@ function App() {
               element={<MemberProfile />}
             />
 
+
+            {/* MEETINGS */}
+
             <Route
               path="/meetings"
               element={<Meetings />}
@@ -68,10 +88,21 @@ function App() {
               element={<MeetingDetails />}
             />
 
+
+            {/* PROJECTS */}
+
             <Route
               path="/projects"
               element={<Projects />}
             />
+
+            <Route
+              path="/projects/:projectId"
+              element={<ProjectDetails />}
+            />
+
+
+            {/* DOCUMENTS */}
 
             <Route
               path="/company-documents"
@@ -79,7 +110,7 @@ function App() {
             />
 
 
-            {/* MAIN ADMIN ONLY */}
+            {/* MAIN ADMIN */}
 
             <Route
               element={
@@ -90,14 +121,16 @@ function App() {
                 />
               }
             >
+
               <Route
                 path="/account-requests"
                 element={<AccountRequests />}
               />
+
             </Route>
 
 
-            {/* MAIN ADMIN + TREASURER */}
+            {/* ADMIN / TREASURER */}
 
             <Route
               element={
@@ -109,17 +142,23 @@ function App() {
                 />
               }
             >
+
               <Route
                 path="/financial-approvals"
                 element={<FinancialApprovals />}
               />
+
             </Route>
 
           </Route>
+
         </Route>
+
       </Routes>
+
     </BrowserRouter>
   )
 }
+
 
 export default App

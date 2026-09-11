@@ -1,1 +1,5 @@
 @import "tailwindcss";
+
+.input-style {
+  @apply w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#c5a66a];
+}
