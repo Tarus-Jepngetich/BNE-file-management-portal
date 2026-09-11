@@ -1,6 +1,7 @@
 import {
   LayoutDashboard,
   Users,
+  UserCheck,
   FileText,
   FolderKanban,
   Building2,
@@ -20,6 +21,11 @@ function Sidebar() {
       path: "/members",
       icon: Users,
     },
+    {
+  name: "Account Requests",
+  path: "/account-requests",
+  icon: UserCheck,
+},
     {
       name: "Meetings",
       path: "/meetings",
