@@ -7,6 +7,7 @@ import {
   Building2,
   LogOut,
   WalletCards,
+  Activity,
 } from "lucide-react"
 
 import {
@@ -42,6 +43,11 @@ function Sidebar() {
       icon: Users,
       visible: true,
     },
+    {
+  label: "Activity",
+  path: "/activity",
+  icon: Activity,
+},
 
     {
       name: "Account Requests",
