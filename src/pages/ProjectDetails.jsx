@@ -18,6 +18,7 @@ import {
   ExternalLink,
   FileText,
   FolderOpen,
+  Image,
   LoaderCircle,
   MapPin,
   Plus,
@@ -25,6 +26,7 @@ import {
   Save,
   Trash2,
   Upload,
+  Video,
   Wallet,
   X,
   XCircle,
@@ -36,6 +38,7 @@ import { useAuth } from "../context/AuthContext"
 
 function ProjectDetails() {
   const { projectId } = useParams()
+
   const navigate = useNavigate()
 
   const {
@@ -44,50 +47,118 @@ function ProjectDetails() {
     isTreasurer,
   } = useAuth()
 
-  const [project, setProject] = useState(null)
-  const [documents, setDocuments] = useState([])
-  const [expenses, setExpenses] = useState([])
 
-  const [loading, setLoading] = useState(true)
-  const [savingProject, setSavingProject] = useState(false)
-  const [uploadingDocument, setUploadingDocument] = useState(false)
-  const [submittingExpense, setSubmittingExpense] = useState(false)
-  const [reviewingExpenseId, setReviewingExpenseId] = useState(null)
+  const [project, setProject] =
+    useState(null)
 
-  const [error, setError] = useState("")
-  const [message, setMessage] = useState("")
+  const [documents, setDocuments] =
+    useState([])
 
-  const [showDocumentModal, setShowDocumentModal] = useState(false)
-  const [showExpenseModal, setShowExpenseModal] = useState(false)
+  const [expenses, setExpenses] =
+    useState([])
 
-  const [projectForm, setProjectForm] = useState({
-    title: "",
-    description: "",
-    location: "",
-    projectStatus: "planning",
-    startDate: "",
-    expectedCompletionDate: "",
-    actualCompletionDate: "",
-    budget: "",
-  })
+  const [progressUpdates, setProgressUpdates] =
+    useState([])
 
-  const [documentForm, setDocumentForm] = useState({
-    title: "",
-    category: "other",
-    description: "",
-    file: null,
-  })
 
-  const [expenseForm, setExpenseForm] = useState({
-    expenseDate: "",
-    expenseTitle: "",
-    category: "",
-    supplier: "",
-    amount: "",
-    transactionReference: "",
-    notes: "",
-    evidence: null,
-  })
+  const [loading, setLoading] =
+    useState(true)
+
+  const [savingProject, setSavingProject] =
+    useState(false)
+
+  const [
+    uploadingDocument,
+    setUploadingDocument,
+  ] = useState(false)
+
+  const [
+    submittingExpense,
+    setSubmittingExpense,
+  ] = useState(false)
+
+  const [
+    reviewingExpenseId,
+    setReviewingExpenseId,
+  ] = useState(null)
+
+  const [
+    savingProgress,
+    setSavingProgress,
+  ] = useState(false)
+
+  const [
+    deletingProgressId,
+    setDeletingProgressId,
+  ] = useState(null)
+
+
+  const [error, setError] =
+    useState("")
+
+  const [message, setMessage] =
+    useState("")
+
+
+  const [
+    showDocumentModal,
+    setShowDocumentModal,
+  ] = useState(false)
+
+  const [
+    showExpenseModal,
+    setShowExpenseModal,
+  ] = useState(false)
+
+  const [
+    showProgressModal,
+    setShowProgressModal,
+  ] = useState(false)
+
+
+  const [projectForm, setProjectForm] =
+    useState({
+      title: "",
+      description: "",
+      location: "",
+      projectStatus: "planning",
+      startDate: "",
+      expectedCompletionDate: "",
+      actualCompletionDate: "",
+      budget: "",
+    })
+
+
+  const [documentForm, setDocumentForm] =
+    useState({
+      title: "",
+      category: "other",
+      description: "",
+      file: null,
+    })
+
+
+  const [expenseForm, setExpenseForm] =
+    useState({
+      expenseDate: "",
+      expenseTitle: "",
+      category: "",
+      supplier: "",
+      amount: "",
+      transactionReference: "",
+      notes: "",
+      evidence: null,
+    })
+
+
+  const [progressForm, setProgressForm] =
+    useState({
+      progressDate: "",
+      stage: "",
+      completionPercentage: "",
+      caption: "",
+      media: null,
+    })
 
 
   useEffect(() => {
@@ -104,6 +175,7 @@ function ProjectDetails() {
         projectResult,
         documentsResult,
         expensesResult,
+        progressResult,
       ] = await Promise.all([
         supabase
           .from("projects")
@@ -126,7 +198,19 @@ function ProjectDetails() {
           .order("expense_date", {
             ascending: false,
           }),
+
+        supabase
+          .from("project_progress")
+          .select("*")
+          .eq("project_id", projectId)
+          .order("progress_date", {
+            ascending: false,
+          })
+          .order("created_at", {
+            ascending: false,
+          }),
       ])
+
 
       if (projectResult.error) {
         throw projectResult.error
@@ -140,9 +224,27 @@ function ProjectDetails() {
         throw expensesResult.error
       }
 
-      setProject(projectResult.data)
-      setDocuments(documentsResult.data || [])
-      setExpenses(expensesResult.data || [])
+      if (progressResult.error) {
+        throw progressResult.error
+      }
+
+
+      setProject(
+        projectResult.data
+      )
+
+      setDocuments(
+        documentsResult.data || []
+      )
+
+      setExpenses(
+        expensesResult.data || []
+      )
+
+      setProgressUpdates(
+        progressResult.data || []
+      )
+
 
       setProjectForm({
         title:
@@ -169,7 +271,9 @@ function ProjectDetails() {
         budget:
           projectResult.data.budget ?? "",
       })
+
     } catch (error) {
+
       console.error(
         "Load project error:",
         error
@@ -177,8 +281,9 @@ function ProjectDetails() {
 
       setError(
         error.message ||
-          "Unable to load project."
+        "Unable to load project."
       )
+
     } finally {
       setLoading(false)
     }
@@ -186,42 +291,48 @@ function ProjectDetails() {
 
 
   // ==================================================
-  // PROJECT SUMMARY
+  // FINANCIAL SUMMARY
   // ==================================================
 
-  const approvedExpenses = useMemo(
-    () =>
-      expenses.filter(
-        (expense) =>
-          expense.approval_status ===
-          "approved"
-      ),
-    [expenses]
-  )
+  const approvedExpenses =
+    useMemo(
+      () =>
+        expenses.filter(
+          (expense) =>
+            expense.approval_status ===
+            "approved"
+        ),
+      [expenses]
+    )
 
 
-  const pendingExpenses = useMemo(
-    () =>
-      expenses.filter(
-        (expense) =>
-          expense.approval_status ===
-          "pending"
-      ),
-    [expenses]
-  )
+  const pendingExpenses =
+    useMemo(
+      () =>
+        expenses.filter(
+          (expense) =>
+            expense.approval_status ===
+            "pending"
+        ),
+      [expenses]
+    )
 
 
   const totalApprovedSpent =
     approvedExpenses.reduce(
       (total, expense) =>
         total +
-        Number(expense.amount || 0),
+        Number(
+          expense.amount || 0
+        ),
       0
     )
 
 
   const projectBudget =
-    Number(project?.budget || 0)
+    Number(
+      project?.budget || 0
+    )
 
 
   const remainingBudget =
@@ -229,704 +340,1203 @@ function ProjectDetails() {
     totalApprovedSpent
 
 
+  const latestProgress =
+    progressUpdates.length > 0
+      ? progressUpdates[0]
+      : null
+
+
+  const currentCompletion =
+    Number(
+      latestProgress
+        ?.completion_percentage || 0
+    )
+
+
   // ==================================================
   // UPDATE PROJECT
   // ==================================================
 
-  const saveProject = async () => {
-    try {
-      setSavingProject(true)
-      setError("")
-      setMessage("")
+  const saveProject =
+    async () => {
+      try {
+        setSavingProject(true)
+        setError("")
+        setMessage("")
 
-      if (!isMainAdmin) {
-        throw new Error(
-          "Only the Main Admin can edit projects."
+        if (!isMainAdmin) {
+          throw new Error(
+            "Only the Main Admin can edit projects."
+          )
+        }
+
+        if (
+          !projectForm.title.trim()
+        ) {
+          throw new Error(
+            "Project title is required."
+          )
+        }
+
+        if (
+          projectForm.budget &&
+          Number(
+            projectForm.budget
+          ) < 0
+        ) {
+          throw new Error(
+            "Budget cannot be negative."
+          )
+        }
+
+
+        const actualCompletionDate =
+          projectForm.projectStatus ===
+          "completed"
+            ? projectForm.actualCompletionDate ||
+              null
+            : null
+
+
+        const { error } =
+          await supabase
+            .from("projects")
+            .update({
+              title:
+                projectForm.title.trim(),
+
+              description:
+                projectForm.description.trim() ||
+                null,
+
+              location:
+                projectForm.location.trim() ||
+                null,
+
+              project_status:
+                projectForm.projectStatus,
+
+              start_date:
+                projectForm.startDate ||
+                null,
+
+              expected_completion_date:
+                projectForm.expectedCompletionDate ||
+                null,
+
+              actual_completion_date:
+                actualCompletionDate,
+
+              budget:
+                projectForm.budget !== ""
+                  ? Number(
+                      projectForm.budget
+                    )
+                  : null,
+
+              updated_at:
+                new Date()
+                  .toISOString(),
+            })
+            .eq(
+              "id",
+              projectId
+            )
+
+
+        if (error) {
+          throw error
+        }
+
+
+        setMessage(
+          "Project updated successfully."
         )
-      }
 
-      if (!projectForm.title.trim()) {
-        throw new Error(
-          "Project title is required."
+        await loadProject()
+
+      } catch (error) {
+
+        console.error(
+          "Update project error:",
+          error
         )
-      }
 
-      if (
-        projectForm.budget &&
-        Number(projectForm.budget) < 0
-      ) {
-        throw new Error(
-          "Budget cannot be negative."
-        )
-      }
-
-      const actualCompletionDate =
-        projectForm.projectStatus ===
-        "completed"
-          ? projectForm.actualCompletionDate || null
-          : null
-
-      const { error } =
-        await supabase
-          .from("projects")
-          .update({
-            title:
-              projectForm.title.trim(),
-
-            description:
-              projectForm.description.trim() ||
-              null,
-
-            location:
-              projectForm.location.trim() ||
-              null,
-
-            project_status:
-              projectForm.projectStatus,
-
-            start_date:
-              projectForm.startDate ||
-              null,
-
-            expected_completion_date:
-              projectForm.expectedCompletionDate ||
-              null,
-
-            actual_completion_date:
-              actualCompletionDate,
-
-            budget:
-              projectForm.budget !== ""
-                ? Number(projectForm.budget)
-                : null,
-
-            updated_at:
-              new Date().toISOString(),
-          })
-          .eq("id", projectId)
-
-      if (error) {
-        throw error
-      }
-
-      setMessage(
-        "Project updated successfully."
-      )
-
-      await loadProject()
-    } catch (error) {
-      console.error(
-        "Update project error:",
-        error
-      )
-
-      setError(
-        error.message ||
+        setError(
+          error.message ||
           "Unable to update project."
-      )
-    } finally {
-      setSavingProject(false)
+        )
+
+      } finally {
+        setSavingProject(false)
+      }
     }
-  }
 
 
   // ==================================================
   // PROJECT DOCUMENTS
   // ==================================================
 
-  const uploadProjectDocument = async (event) => {
-    event.preventDefault()
+  const uploadProjectDocument =
+    async (event) => {
+      event.preventDefault()
 
-    let uploadedPath = null
+      let uploadedPath = null
 
-    try {
-      setUploadingDocument(true)
-      setError("")
-      setMessage("")
+      try {
+        setUploadingDocument(true)
+        setError("")
+        setMessage("")
 
-      if (!isMainAdmin) {
-        throw new Error(
-          "Only the Main Admin can upload project documents."
-        )
-      }
-
-      if (!documentForm.title.trim()) {
-        throw new Error(
-          "Enter a document title."
-        )
-      }
-
-      if (!documentForm.file) {
-        throw new Error(
-          "Select a document."
-        )
-      }
-
-      const allowedTypes = [
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "image/jpeg",
-        "image/png",
-      ]
-
-      if (
-        !allowedTypes.includes(
-          documentForm.file.type
-        )
-      ) {
-        throw new Error(
-          "Only PDF, DOC, DOCX, XLS, XLSX, JPG and PNG files are allowed."
-        )
-      }
-
-      const maxSize =
-        15 * 1024 * 1024
-
-      if (
-        documentForm.file.size >
-        maxSize
-      ) {
-        throw new Error(
-          "Document must be 15 MB or smaller."
-        )
-      }
-
-      const safeName =
-        documentForm.file.name.replace(
-          /[^a-zA-Z0-9._-]/g,
-          "_"
-        )
-
-      uploadedPath =
-        `${projectId}/${user.id}/${crypto.randomUUID()}-${safeName}`
-
-      const {
-        error: uploadError,
-      } =
-        await supabase.storage
-          .from("project-documents")
-          .upload(
-            uploadedPath,
-            documentForm.file,
-            {
-              cacheControl: "3600",
-              upsert: false,
-            }
+        if (!isMainAdmin) {
+          throw new Error(
+            "Only the Main Admin can upload project documents."
           )
+        }
 
-      if (uploadError) {
-        throw uploadError
-      }
-
-      const {
-        error: databaseError,
-      } =
-        await supabase
-          .from("project_documents")
-          .insert({
-            project_id: projectId,
-
-            title:
-              documentForm.title.trim(),
-
-            document_category:
-              documentForm.category,
-
-            description:
-              documentForm.description.trim() ||
-              null,
-
-            file_path:
-              uploadedPath,
-
-            original_file_name:
-              documentForm.file.name,
-
-            uploaded_by:
-              user.id,
-          })
-
-      if (databaseError) {
-        throw databaseError
-      }
-
-      setDocumentForm({
-        title: "",
-        category: "other",
-        description: "",
-        file: null,
-      })
-
-      setShowDocumentModal(false)
-
-      setMessage(
-        "Project document uploaded successfully."
-      )
-
-      await loadProject()
-    } catch (error) {
-      console.error(
-        "Upload project document error:",
-        error
-      )
-
-      if (uploadedPath) {
-        await supabase.storage
-          .from("project-documents")
-          .remove([
-            uploadedPath,
-          ])
-      }
-
-      setError(
-        error.message ||
-          "Unable to upload project document."
-      )
-    } finally {
-      setUploadingDocument(false)
-    }
-  }
-
-
-  const viewProjectDocument = async (
-    filePath
-  ) => {
-    try {
-      setError("")
-
-      const {
-        data,
-        error,
-      } =
-        await supabase.storage
-          .from("project-documents")
-          .createSignedUrl(
-            filePath,
-            120
+        if (
+          !documentForm.title.trim()
+        ) {
+          throw new Error(
+            "Enter a document title."
           )
+        }
 
-      if (error) {
-        throw error
-      }
-
-      window.open(
-        data.signedUrl,
-        "_blank",
-        "noopener,noreferrer"
-      )
-    } catch (error) {
-      setError(
-        error.message ||
-          "Unable to open document."
-      )
-    }
-  }
-
-
-  const deleteProjectDocument = async (
-    document
-  ) => {
-    const confirmed =
-      window.confirm(
-        `Delete "${document.title}"?`
-      )
-
-    if (!confirmed) {
-      return
-    }
-
-    try {
-      setError("")
-      setMessage("")
-
-      if (!isMainAdmin) {
-        throw new Error(
-          "Only the Main Admin can delete project documents."
-        )
-      }
-
-      const {
-        error: storageError,
-      } =
-        await supabase.storage
-          .from("project-documents")
-          .remove([
-            document.file_path,
-          ])
-
-      if (storageError) {
-        throw storageError
-      }
-
-      const {
-        error: databaseError,
-      } =
-        await supabase
-          .from("project_documents")
-          .delete()
-          .eq(
-            "id",
-            document.id
+        if (!documentForm.file) {
+          throw new Error(
+            "Select a document."
           )
-
-      if (databaseError) {
-        throw databaseError
-      }
-
-      setMessage(
-        "Project document deleted."
-      )
-
-      await loadProject()
-    } catch (error) {
-      console.error(
-        "Delete project document error:",
-        error
-      )
-
-      setError(
-        error.message ||
-          "Unable to delete project document."
-      )
-    }
-  }
+        }
 
 
-  // ==================================================
-  // PROJECT EXPENSES
-  // ==================================================
-
-  const submitExpense = async (event) => {
-    event.preventDefault()
-
-    let evidencePath = null
-
-    try {
-      setSubmittingExpense(true)
-      setError("")
-      setMessage("")
-
-      if (!expenseForm.expenseDate) {
-        throw new Error(
-          "Expense date is required."
-        )
-      }
-
-      if (!expenseForm.expenseTitle.trim()) {
-        throw new Error(
-          "Expense title is required."
-        )
-      }
-
-      if (!expenseForm.category.trim()) {
-        throw new Error(
-          "Expense category is required."
-        )
-      }
-
-      if (
-        !expenseForm.amount ||
-        Number(expenseForm.amount) <= 0
-      ) {
-        throw new Error(
-          "Enter a valid expense amount."
-        )
-      }
-
-      if (expenseForm.evidence) {
         const allowedTypes = [
           "application/pdf",
+          "application/msword",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          "application/vnd.ms-excel",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
           "image/jpeg",
           "image/png",
         ]
 
+
         if (
           !allowedTypes.includes(
-            expenseForm.evidence.type
+            documentForm.file.type
           )
         ) {
           throw new Error(
-            "Expense evidence must be PDF, JPG or PNG."
+            "Only PDF, DOC, DOCX, XLS, XLSX, JPG and PNG files are allowed."
           )
         }
 
+
         const maxSize =
-          5 * 1024 * 1024
+          15 * 1024 * 1024
+
 
         if (
-          expenseForm.evidence.size >
+          documentForm.file.size >
           maxSize
         ) {
           throw new Error(
-            "Expense evidence must be 5 MB or smaller."
+            "Document must be 15 MB or smaller."
           )
         }
 
+
         const safeName =
-          expenseForm.evidence.name.replace(
+          documentForm.file.name.replace(
             /[^a-zA-Z0-9._-]/g,
             "_"
           )
 
-        evidencePath =
-          `${user.id}/${projectId}/${crypto.randomUUID()}-${safeName}`
+
+        uploadedPath =
+          `${projectId}/${user.id}/${crypto.randomUUID()}-${safeName}`
+
 
         const {
           error: uploadError,
         } =
           await supabase.storage
-            .from("project-expense-evidence")
+            .from(
+              "project-documents"
+            )
             .upload(
-              evidencePath,
-              expenseForm.evidence,
+              uploadedPath,
+              documentForm.file,
               {
-                cacheControl: "3600",
+                cacheControl:
+                  "3600",
+
                 upsert: false,
               }
             )
 
+
         if (uploadError) {
           throw uploadError
         }
-      }
-
-      const {
-        error: databaseError,
-      } =
-        await supabase
-          .from("project_expenses")
-          .insert({
-            project_id:
-              projectId,
-
-            expense_date:
-              expenseForm.expenseDate,
-
-            expense_title:
-              expenseForm.expenseTitle.trim(),
-
-            category:
-              expenseForm.category.trim(),
-
-            supplier:
-              expenseForm.supplier.trim() ||
-              null,
-
-            amount:
-              Number(
-                expenseForm.amount
-              ),
-
-            transaction_reference:
-              expenseForm.transactionReference.trim() ||
-              null,
-
-            notes:
-              expenseForm.notes.trim() ||
-              null,
-
-            evidence_path:
-              evidencePath,
-
-            submitted_by:
-              user.id,
-
-            approval_status:
-              "pending",
-          })
-
-      if (databaseError) {
-        throw databaseError
-      }
-
-      setExpenseForm({
-        expenseDate: "",
-        expenseTitle: "",
-        category: "",
-        supplier: "",
-        amount: "",
-        transactionReference: "",
-        notes: "",
-        evidence: null,
-      })
-
-      setShowExpenseModal(false)
-
-      setMessage(
-        "Project expense submitted for approval."
-      )
-
-      await loadProject()
-    } catch (error) {
-      console.error(
-        "Submit expense error:",
-        error
-      )
-
-      if (evidencePath) {
-        await supabase.storage
-          .from("project-expense-evidence")
-          .remove([
-            evidencePath,
-          ])
-      }
-
-      setError(
-        error.message ||
-          "Unable to submit project expense."
-      )
-    } finally {
-      setSubmittingExpense(false)
-    }
-  }
 
 
-  const approveExpense = async (
-    expense
-  ) => {
-    try {
-      setReviewingExpenseId(
-        expense.id
-      )
+        const {
+          error: databaseError,
+        } =
+          await supabase
+            .from(
+              "project_documents"
+            )
+            .insert({
+              project_id:
+                projectId,
 
-      setError("")
-      setMessage("")
+              title:
+                documentForm.title.trim(),
 
-      const { error } =
-        await supabase.rpc(
-          "approve_project_expense",
-          {
-            p_expense_id:
-              expense.id,
-          }
+              document_category:
+                documentForm.category,
+
+              description:
+                documentForm.description.trim() ||
+                null,
+
+              file_path:
+                uploadedPath,
+
+              original_file_name:
+                documentForm.file.name,
+
+              uploaded_by:
+                user.id,
+            })
+
+
+        if (databaseError) {
+          throw databaseError
+        }
+
+
+        setDocumentForm({
+          title: "",
+          category: "other",
+          description: "",
+          file: null,
+        })
+
+
+        setShowDocumentModal(
+          false
         )
 
-      if (error) {
-        throw error
-      }
 
-      setMessage(
-        "Project expense approved."
-      )
-
-      await loadProject()
-    } catch (error) {
-      console.error(
-        "Approve expense error:",
-        error
-      )
-
-      setError(
-        error.message ||
-          "Unable to approve expense."
-      )
-    } finally {
-      setReviewingExpenseId(
-        null
-      )
-    }
-  }
-
-
-  const rejectExpense = async (
-    expense
-  ) => {
-    const reason =
-      window.prompt(
-        "Enter rejection reason:"
-      )
-
-    if (reason === null) {
-      return
-    }
-
-    try {
-      setReviewingExpenseId(
-        expense.id
-      )
-
-      setError("")
-      setMessage("")
-
-      const { error } =
-        await supabase.rpc(
-          "reject_project_expense",
-          {
-            p_expense_id:
-              expense.id,
-
-            p_reason:
-              reason.trim() ||
-              null,
-          }
+        setMessage(
+          "Project document uploaded successfully."
         )
 
-      if (error) {
-        throw error
+
+        await loadProject()
+
+      } catch (error) {
+
+        console.error(
+          "Upload project document error:",
+          error
+        )
+
+
+        if (uploadedPath) {
+          await supabase.storage
+            .from(
+              "project-documents"
+            )
+            .remove([
+              uploadedPath,
+            ])
+        }
+
+
+        setError(
+          error.message ||
+          "Unable to upload project document."
+        )
+
+      } finally {
+        setUploadingDocument(false)
       }
-
-      setMessage(
-        "Project expense rejected."
-      )
-
-      await loadProject()
-    } catch (error) {
-      console.error(
-        "Reject expense error:",
-        error
-      )
-
-      setError(
-        error.message ||
-          "Unable to reject expense."
-      )
-    } finally {
-      setReviewingExpenseId(
-        null
-      )
     }
-  }
 
 
-  const viewExpenseEvidence = async (
-    evidencePath
-  ) => {
-    try {
-      if (!evidencePath) {
+  const viewProjectDocument =
+    async (filePath) => {
+      try {
+        setError("")
+
+        const {
+          data,
+          error,
+        } =
+          await supabase.storage
+            .from(
+              "project-documents"
+            )
+            .createSignedUrl(
+              filePath,
+              120
+            )
+
+
+        if (error) {
+          throw error
+        }
+
+
+        window.open(
+          data.signedUrl,
+          "_blank",
+          "noopener,noreferrer"
+        )
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to open document."
+        )
+      }
+    }
+
+
+  const deleteProjectDocument =
+    async (document) => {
+      const confirmed =
+        window.confirm(
+          `Delete "${document.title}"?`
+        )
+
+
+      if (!confirmed) {
         return
       }
 
-      const {
-        data,
-        error,
-      } =
-        await supabase.storage
-          .from("project-expense-evidence")
-          .createSignedUrl(
-            evidencePath,
-            120
+
+      try {
+        setError("")
+        setMessage("")
+
+
+        const {
+          error: storageError,
+        } =
+          await supabase.storage
+            .from(
+              "project-documents"
+            )
+            .remove([
+              document.file_path,
+            ])
+
+
+        if (storageError) {
+          throw storageError
+        }
+
+
+        const {
+          error: databaseError,
+        } =
+          await supabase
+            .from(
+              "project_documents"
+            )
+            .delete()
+            .eq(
+              "id",
+              document.id
+            )
+
+
+        if (databaseError) {
+          throw databaseError
+        }
+
+
+        setMessage(
+          "Project document deleted."
+        )
+
+
+        await loadProject()
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to delete project document."
+        )
+      }
+    }
+
+
+  // ==================================================
+  // EXPENSES
+  // ==================================================
+
+  const submitExpense =
+    async (event) => {
+      event.preventDefault()
+
+      let evidencePath = null
+
+
+      try {
+        setSubmittingExpense(true)
+        setError("")
+        setMessage("")
+
+
+        if (
+          !expenseForm.expenseDate
+        ) {
+          throw new Error(
+            "Expense date is required."
+          )
+        }
+
+
+        if (
+          !expenseForm.expenseTitle.trim()
+        ) {
+          throw new Error(
+            "Expense title is required."
+          )
+        }
+
+
+        if (
+          !expenseForm.category.trim()
+        ) {
+          throw new Error(
+            "Expense category is required."
+          )
+        }
+
+
+        if (
+          !expenseForm.amount ||
+          Number(
+            expenseForm.amount
+          ) <= 0
+        ) {
+          throw new Error(
+            "Enter a valid expense amount."
+          )
+        }
+
+
+        if (
+          expenseForm.evidence
+        ) {
+          const allowedTypes = [
+            "application/pdf",
+            "image/jpeg",
+            "image/png",
+          ]
+
+
+          if (
+            !allowedTypes.includes(
+              expenseForm.evidence.type
+            )
+          ) {
+            throw new Error(
+              "Expense evidence must be PDF, JPG or PNG."
+            )
+          }
+
+
+          const maxSize =
+            5 * 1024 * 1024
+
+
+          if (
+            expenseForm.evidence.size >
+            maxSize
+          ) {
+            throw new Error(
+              "Expense evidence must be 5 MB or smaller."
+            )
+          }
+
+
+          const safeName =
+            expenseForm.evidence.name.replace(
+              /[^a-zA-Z0-9._-]/g,
+              "_"
+            )
+
+
+          evidencePath =
+            `${user.id}/${projectId}/${crypto.randomUUID()}-${safeName}`
+
+
+          const {
+            error: uploadError,
+          } =
+            await supabase.storage
+              .from(
+                "project-expense-evidence"
+              )
+              .upload(
+                evidencePath,
+                expenseForm.evidence,
+                {
+                  cacheControl:
+                    "3600",
+
+                  upsert: false,
+                }
+              )
+
+
+          if (uploadError) {
+            throw uploadError
+          }
+        }
+
+
+        const {
+          error: databaseError,
+        } =
+          await supabase
+            .from(
+              "project_expenses"
+            )
+            .insert({
+              project_id:
+                projectId,
+
+              expense_date:
+                expenseForm.expenseDate,
+
+              expense_title:
+                expenseForm.expenseTitle.trim(),
+
+              category:
+                expenseForm.category.trim(),
+
+              supplier:
+                expenseForm.supplier.trim() ||
+                null,
+
+              amount:
+                Number(
+                  expenseForm.amount
+                ),
+
+              transaction_reference:
+                expenseForm.transactionReference.trim() ||
+                null,
+
+              notes:
+                expenseForm.notes.trim() ||
+                null,
+
+              evidence_path:
+                evidencePath,
+
+              submitted_by:
+                user.id,
+
+              approval_status:
+                "pending",
+            })
+
+
+        if (databaseError) {
+          throw databaseError
+        }
+
+
+        setExpenseForm({
+          expenseDate: "",
+          expenseTitle: "",
+          category: "",
+          supplier: "",
+          amount: "",
+          transactionReference: "",
+          notes: "",
+          evidence: null,
+        })
+
+
+        setShowExpenseModal(
+          false
+        )
+
+
+        setMessage(
+          "Project expense submitted for approval."
+        )
+
+
+        await loadProject()
+
+      } catch (error) {
+
+        console.error(
+          "Submit expense error:",
+          error
+        )
+
+
+        if (evidencePath) {
+          await supabase.storage
+            .from(
+              "project-expense-evidence"
+            )
+            .remove([
+              evidencePath,
+            ])
+        }
+
+
+        setError(
+          error.message ||
+          "Unable to submit project expense."
+        )
+
+      } finally {
+        setSubmittingExpense(false)
+      }
+    }
+
+
+  const approveExpense =
+    async (expense) => {
+      try {
+        setReviewingExpenseId(
+          expense.id
+        )
+
+        setError("")
+        setMessage("")
+
+
+        const { error } =
+          await supabase.rpc(
+            "approve_project_expense",
+            {
+              p_expense_id:
+                expense.id,
+            }
           )
 
-      if (error) {
-        throw error
+
+        if (error) {
+          throw error
+        }
+
+
+        setMessage(
+          "Project expense approved."
+        )
+
+
+        await loadProject()
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to approve expense."
+        )
+
+      } finally {
+        setReviewingExpenseId(
+          null
+        )
+      }
+    }
+
+
+  const rejectExpense =
+    async (expense) => {
+      const reason =
+        window.prompt(
+          "Enter rejection reason:"
+        )
+
+
+      if (reason === null) {
+        return
       }
 
-      window.open(
-        data.signedUrl,
-        "_blank",
-        "noopener,noreferrer"
-      )
-    } catch (error) {
-      setError(
-        error.message ||
-          "Unable to open expense evidence."
-      )
-    }
-  }
 
+      try {
+        setReviewingExpenseId(
+          expense.id
+        )
+
+        setError("")
+        setMessage("")
+
+
+        const { error } =
+          await supabase.rpc(
+            "reject_project_expense",
+            {
+              p_expense_id:
+                expense.id,
+
+              p_reason:
+                reason.trim() ||
+                null,
+            }
+          )
+
+
+        if (error) {
+          throw error
+        }
+
+
+        setMessage(
+          "Project expense rejected."
+        )
+
+
+        await loadProject()
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to reject expense."
+        )
+
+      } finally {
+        setReviewingExpenseId(
+          null
+        )
+      }
+    }
+
+
+  const viewExpenseEvidence =
+    async (evidencePath) => {
+      try {
+        const {
+          data,
+          error,
+        } =
+          await supabase.storage
+            .from(
+              "project-expense-evidence"
+            )
+            .createSignedUrl(
+              evidencePath,
+              120
+            )
+
+
+        if (error) {
+          throw error
+        }
+
+
+        window.open(
+          data.signedUrl,
+          "_blank",
+          "noopener,noreferrer"
+        )
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to open expense evidence."
+        )
+      }
+    }
+
+
+  // ==================================================
+  // PROJECT PROGRESS
+  // ==================================================
+
+  const submitProgress =
+    async (event) => {
+      event.preventDefault()
+
+      let mediaPath = null
+
+      try {
+        setSavingProgress(true)
+        setError("")
+        setMessage("")
+
+
+        if (!isMainAdmin) {
+          throw new Error(
+            "Only the Main Admin can add project progress updates."
+          )
+        }
+
+
+        if (
+          !progressForm.progressDate
+        ) {
+          throw new Error(
+            "Progress date is required."
+          )
+        }
+
+
+        if (
+          !progressForm.stage.trim()
+        ) {
+          throw new Error(
+            "Enter the construction stage."
+          )
+        }
+
+
+        const percentage =
+          Number(
+            progressForm.completionPercentage
+          )
+
+
+        if (
+          progressForm.completionPercentage === "" ||
+          percentage < 0 ||
+          percentage > 100
+        ) {
+          throw new Error(
+            "Completion percentage must be between 0 and 100."
+          )
+        }
+
+
+        let mediaType = null
+
+
+        if (progressForm.media) {
+          const file =
+            progressForm.media
+
+
+          const allowedImageTypes = [
+            "image/jpeg",
+            "image/png",
+            "image/webp",
+          ]
+
+
+          const allowedVideoTypes = [
+            "video/mp4",
+            "video/webm",
+            "video/quicktime",
+          ]
+
+
+          if (
+            allowedImageTypes.includes(
+              file.type
+            )
+          ) {
+            mediaType = "image"
+
+            if (
+              file.size >
+              10 * 1024 * 1024
+            ) {
+              throw new Error(
+                "Progress image must be 10 MB or smaller."
+              )
+            }
+
+          } else if (
+            allowedVideoTypes.includes(
+              file.type
+            )
+          ) {
+            mediaType = "video"
+
+            if (
+              file.size >
+              100 * 1024 * 1024
+            ) {
+              throw new Error(
+                "Progress video must be 100 MB or smaller."
+              )
+            }
+
+          } else {
+            throw new Error(
+              "Progress media must be JPG, PNG, WEBP, MP4, WEBM or MOV."
+            )
+          }
+
+
+          const safeName =
+            file.name.replace(
+              /[^a-zA-Z0-9._-]/g,
+              "_"
+            )
+
+
+          mediaPath =
+            `${projectId}/${user.id}/${crypto.randomUUID()}-${safeName}`
+
+
+          const {
+            error: uploadError,
+          } =
+            await supabase.storage
+              .from(
+                "project-progress-media"
+              )
+              .upload(
+                mediaPath,
+                file,
+                {
+                  cacheControl:
+                    "3600",
+
+                  upsert: false,
+                }
+              )
+
+
+          if (uploadError) {
+            throw uploadError
+          }
+        }
+
+
+        const {
+          error: databaseError,
+        } =
+          await supabase
+            .from(
+              "project_progress"
+            )
+            .insert({
+              project_id:
+                projectId,
+
+              progress_date:
+                progressForm.progressDate,
+
+              stage:
+                progressForm.stage.trim(),
+
+              completion_percentage:
+                percentage,
+
+              caption:
+                progressForm.caption.trim() ||
+                null,
+
+              media_path:
+                mediaPath,
+
+              media_type:
+                mediaType,
+
+              uploaded_by:
+                user.id,
+            })
+
+
+        if (databaseError) {
+          throw databaseError
+        }
+
+
+        setProgressForm({
+          progressDate: "",
+          stage: "",
+          completionPercentage: "",
+          caption: "",
+          media: null,
+        })
+
+
+        setShowProgressModal(
+          false
+        )
+
+
+        setMessage(
+          "Project progress update added successfully."
+        )
+
+
+        await loadProject()
+
+      } catch (error) {
+
+        console.error(
+          "Progress update error:",
+          error
+        )
+
+
+        if (mediaPath) {
+          await supabase.storage
+            .from(
+              "project-progress-media"
+            )
+            .remove([
+              mediaPath,
+            ])
+        }
+
+
+        setError(
+          error.message ||
+          "Unable to add progress update."
+        )
+
+      } finally {
+        setSavingProgress(false)
+      }
+    }
+
+
+  const openProgressMedia =
+    async (progress) => {
+      try {
+        if (!progress.media_path) {
+          return
+        }
+
+
+        const {
+          data,
+          error,
+        } =
+          await supabase.storage
+            .from(
+              "project-progress-media"
+            )
+            .createSignedUrl(
+              progress.media_path,
+              120
+            )
+
+
+        if (error) {
+          throw error
+        }
+
+
+        window.open(
+          data.signedUrl,
+          "_blank",
+          "noopener,noreferrer"
+        )
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to open progress media."
+        )
+      }
+    }
+
+
+  const deleteProgress =
+    async (progress) => {
+      const confirmed =
+        window.confirm(
+          `Delete the progress update "${progress.stage}"?`
+        )
+
+
+      if (!confirmed) {
+        return
+      }
+
+
+      try {
+        setDeletingProgressId(
+          progress.id
+        )
+
+        setError("")
+        setMessage("")
+
+
+        if (
+          progress.media_path
+        ) {
+          const {
+            error: storageError,
+          } =
+            await supabase.storage
+              .from(
+                "project-progress-media"
+              )
+              .remove([
+                progress.media_path,
+              ])
+
+
+          if (storageError) {
+            throw storageError
+          }
+        }
+
+
+        const {
+          error: databaseError,
+        } =
+          await supabase
+            .from(
+              "project_progress"
+            )
+            .delete()
+            .eq(
+              "id",
+              progress.id
+            )
+
+
+        if (databaseError) {
+          throw databaseError
+        }
+
+
+        setMessage(
+          "Progress update deleted."
+        )
+
+
+        await loadProject()
+
+      } catch (error) {
+
+        setError(
+          error.message ||
+          "Unable to delete progress update."
+        )
+
+      } finally {
+        setDeletingProgressId(
+          null
+        )
+      }
+    }
+
+
+  // ==================================================
+  // LOADING
+  // ==================================================
 
   if (loading) {
     return (
@@ -966,16 +1576,19 @@ function ProjectDetails() {
   return (
     <div>
 
-      {/* BACK */}
-
       <button
         onClick={() =>
-          navigate("/projects")
+          navigate(
+            "/projects"
+          )
         }
         className="inline-flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-[#9b7c3f]"
       >
+
         <ArrowLeft size={17} />
+
         Back to Projects
+
       </button>
 
 
@@ -983,7 +1596,7 @@ function ProjectDetails() {
 
       <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-7">
 
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
 
           <div>
 
@@ -996,6 +1609,7 @@ function ProjectDetails() {
             <h1 className="mt-4 text-3xl font-bold text-slate-900">
               {project.title}
             </h1>
+
 
             {project.description && (
               <p className="mt-3 max-w-3xl leading-7 text-slate-500">
@@ -1019,7 +1633,9 @@ function ProjectDetails() {
 
             {project.start_date && (
               <InfoRow
-                icon={CalendarDays}
+                icon={
+                  CalendarDays
+                }
                 value={`Started ${formatDate(
                   project.start_date
                 )}`}
@@ -1039,16 +1655,57 @@ function ProjectDetails() {
 
         </div>
 
+
+        {/* PROGRESS BAR */}
+
+        <div className="mt-7 border-t border-slate-100 pt-6">
+
+          <div className="flex items-center justify-between">
+
+            <p className="text-sm font-semibold text-slate-700">
+              Project Completion
+            </p>
+
+            <p className="text-sm font-bold text-[#9b7c3f]">
+              {currentCompletion}%
+            </p>
+
+          </div>
+
+
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-slate-100">
+
+            <div
+              className="h-full rounded-full bg-[#c5a66a] transition-all"
+              style={{
+                width:
+                  `${currentCompletion}%`,
+              }}
+            />
+
+          </div>
+
+
+          {latestProgress && (
+            <p className="mt-3 text-xs text-slate-400">
+              Latest stage:{" "}
+              <span className="font-semibold text-slate-600">
+                {latestProgress.stage}
+              </span>
+            </p>
+          )}
+
+        </div>
+
       </div>
 
-
-      {/* MESSAGES */}
 
       {error && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
+
 
       {message && (
         <div className="mt-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
@@ -1115,7 +1772,9 @@ function ProjectDetails() {
         <SectionHeader
           title="Project Details"
           description="General project information and project status."
-          icon={Building2}
+          icon={
+            Building2
+          }
         />
 
 
@@ -1125,9 +1784,8 @@ function ProjectDetails() {
 
             <div className="grid gap-5 md:grid-cols-2">
 
-              <FormField
-                label="Project Title"
-              >
+              <FormField label="Project Title">
+
                 <input
                   value={
                     projectForm.title
@@ -1136,6 +1794,7 @@ function ProjectDetails() {
                     setProjectForm(
                       (previous) => ({
                         ...previous,
+
                         title:
                           event.target.value,
                       })
@@ -1143,12 +1802,12 @@ function ProjectDetails() {
                   }
                   className="input-style"
                 />
+
               </FormField>
 
 
-              <FormField
-                label="Location"
-              >
+              <FormField label="Location">
+
                 <input
                   value={
                     projectForm.location
@@ -1157,6 +1816,7 @@ function ProjectDetails() {
                     setProjectForm(
                       (previous) => ({
                         ...previous,
+
                         location:
                           event.target.value,
                       })
@@ -1164,12 +1824,12 @@ function ProjectDetails() {
                   }
                   className="input-style"
                 />
+
               </FormField>
 
 
-              <FormField
-                label="Status"
-              >
+              <FormField label="Status">
+
                 <select
                   value={
                     projectForm.projectStatus
@@ -1178,6 +1838,7 @@ function ProjectDetails() {
                     setProjectForm(
                       (previous) => ({
                         ...previous,
+
                         projectStatus:
                           event.target.value,
                       })
@@ -1185,6 +1846,7 @@ function ProjectDetails() {
                   }
                   className="input-style bg-white"
                 >
+
                   <option value="planning">
                     Planning
                   </option>
@@ -1204,13 +1866,14 @@ function ProjectDetails() {
                   <option value="cancelled">
                     Cancelled
                   </option>
+
                 </select>
+
               </FormField>
 
 
-              <FormField
-                label="Budget"
-              >
+              <FormField label="Budget">
+
                 <input
                   type="number"
                   min="0"
@@ -1221,6 +1884,7 @@ function ProjectDetails() {
                     setProjectForm(
                       (previous) => ({
                         ...previous,
+
                         budget:
                           event.target.value,
                       })
@@ -1228,12 +1892,12 @@ function ProjectDetails() {
                   }
                   className="input-style"
                 />
+
               </FormField>
 
 
-              <FormField
-                label="Start Date"
-              >
+              <FormField label="Start Date">
+
                 <input
                   type="date"
                   value={
@@ -1243,6 +1907,7 @@ function ProjectDetails() {
                     setProjectForm(
                       (previous) => ({
                         ...previous,
+
                         startDate:
                           event.target.value,
                       })
@@ -1250,12 +1915,12 @@ function ProjectDetails() {
                   }
                   className="input-style"
                 />
+
               </FormField>
 
 
-              <FormField
-                label="Expected Completion"
-              >
+              <FormField label="Expected Completion">
+
                 <input
                   type="date"
                   value={
@@ -1265,6 +1930,7 @@ function ProjectDetails() {
                     setProjectForm(
                       (previous) => ({
                         ...previous,
+
                         expectedCompletionDate:
                           event.target.value,
                       })
@@ -1272,15 +1938,15 @@ function ProjectDetails() {
                   }
                   className="input-style"
                 />
+
               </FormField>
 
 
               {projectForm.projectStatus ===
                 "completed" && (
 
-                <FormField
-                  label="Actual Completion"
-                >
+                <FormField label="Actual Completion">
+
                   <input
                     type="date"
                     value={
@@ -1290,6 +1956,7 @@ function ProjectDetails() {
                       setProjectForm(
                         (previous) => ({
                           ...previous,
+
                           actualCompletionDate:
                             event.target.value,
                         })
@@ -1297,6 +1964,7 @@ function ProjectDetails() {
                     }
                     className="input-style"
                   />
+
                 </FormField>
 
               )}
@@ -1304,9 +1972,8 @@ function ProjectDetails() {
 
               <div className="md:col-span-2">
 
-                <FormField
-                  label="Description"
-                >
+                <FormField label="Description">
+
                   <textarea
                     rows={5}
                     value={
@@ -1316,6 +1983,7 @@ function ProjectDetails() {
                       setProjectForm(
                         (previous) => ({
                           ...previous,
+
                           description:
                             event.target.value,
                         })
@@ -1323,6 +1991,7 @@ function ProjectDetails() {
                     }
                     className="input-style"
                   />
+
                 </FormField>
 
               </div>
@@ -1416,6 +2085,7 @@ function ProjectDetails() {
         <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
 
           <div>
+
             <h2 className="text-lg font-semibold text-slate-900">
               Project Documents
             </h2>
@@ -1423,19 +2093,27 @@ function ProjectDetails() {
             <p className="mt-1 text-sm text-slate-500">
               QS, architecture, legal, engineering and approval documents.
             </p>
+
           </div>
 
 
           {isMainAdmin && (
+
             <button
               onClick={() =>
-                setShowDocumentModal(true)
+                setShowDocumentModal(
+                  true
+                )
               }
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
             >
+
               <Plus size={17} />
+
               Add Document
+
             </button>
+
           )}
 
         </div>
@@ -1446,7 +2124,9 @@ function ProjectDetails() {
           {documents.length === 0 ? (
 
             <EmptyState
-              icon={FolderOpen}
+              icon={
+                FolderOpen
+              }
               title="No project documents"
               text="Project documents will appear here."
             />
@@ -1458,72 +2138,81 @@ function ProjectDetails() {
               {documents.map(
                 (document) => (
 
-                <div
-                  key={
-                    document.id
-                  }
-                  className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
-                >
+                  <div
+                    key={
+                      document.id
+                    }
+                    className="flex flex-col gap-4 rounded-xl border border-slate-200 p-4 md:flex-row md:items-center md:justify-between"
+                  >
 
-                  <div>
+                    <div>
 
-                    <p className="font-semibold text-slate-900">
-                      {document.title}
-                    </p>
-
-                    <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#9b7c3f]">
-                      {formatDocumentCategory(
-                        document.document_category
-                      )}
-                    </p>
-
-                    {document.description && (
-                      <p className="mt-2 text-sm text-slate-500">
-                        {document.description}
+                      <p className="font-semibold text-slate-900">
+                        {document.title}
                       </p>
-                    )}
 
-                    <p className="mt-2 text-xs text-slate-400">
-                      {document.original_file_name}
-                    </p>
+                      <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-[#9b7c3f]">
+                        {formatDocumentCategory(
+                          document.document_category
+                        )}
+                      </p>
 
-                  </div>
+                      {document.description && (
+                        <p className="mt-2 text-sm text-slate-500">
+                          {document.description}
+                        </p>
+                      )}
 
-
-                  <div className="flex gap-2">
-
-                    <button
-                      onClick={() =>
-                        viewProjectDocument(
-                          document.file_path
-                        )
-                      }
-                      className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
-                    >
-                      <ExternalLink size={15} />
-                      View
-                    </button>
+                    </div>
 
 
-                    {isMainAdmin && (
+                    <div className="flex gap-2">
+
                       <button
                         onClick={() =>
-                          deleteProjectDocument(
-                            document
+                          viewProjectDocument(
+                            document.file_path
                           )
                         }
-                        className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600"
+                        className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
                       >
-                        <Trash2 size={15} />
-                        Delete
+
+                        <ExternalLink
+                          size={15}
+                        />
+
+                        View
+
                       </button>
-                    )}
+
+
+                      {isMainAdmin && (
+
+                        <button
+                          onClick={() =>
+                            deleteProjectDocument(
+                              document
+                            )
+                          }
+                          className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600"
+                        >
+
+                          <Trash2
+                            size={15}
+                          />
+
+                          Delete
+
+                        </button>
+
+                      )}
+
+                    </div>
 
                   </div>
 
-                </div>
-
-              ))}
+                )
+              )}
 
             </div>
 
@@ -1541,24 +2230,31 @@ function ProjectDetails() {
         <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
 
           <div>
+
             <h2 className="text-lg font-semibold text-slate-900">
               Project Expenses
             </h2>
 
             <p className="mt-1 text-sm text-slate-500">
-              Expenses only count toward official spending after approval.
+              Only approved expenses count toward project spending.
             </p>
+
           </div>
 
 
           <button
             onClick={() =>
-              setShowExpenseModal(true)
+              setShowExpenseModal(
+                true
+              )
             }
             className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
           >
+
             <Plus size={17} />
+
             Add Expense
+
           </button>
 
         </div>
@@ -1571,7 +2267,9 @@ function ProjectDetails() {
             <div className="p-6">
 
               <EmptyState
-                icon={ReceiptText}
+                icon={
+                  ReceiptText
+                }
                 title="No expenses recorded"
                 text="Project expenses will appear here."
               />
@@ -1684,9 +2382,11 @@ function ProjectDetails() {
                           />
 
                           {expense.rejection_reason && (
+
                             <p className="mt-2 max-w-[180px] text-xs text-red-500">
                               {expense.rejection_reason}
                             </p>
+
                           )}
 
                         </td>
@@ -1739,8 +2439,13 @@ function ProjectDetails() {
                                   }
                                   className="inline-flex items-center gap-1 rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 disabled:opacity-50"
                                 >
-                                  <CheckCircle2 size={14} />
+
+                                  <CheckCircle2
+                                    size={14}
+                                  />
+
                                   Approve
+
                                 </button>
 
 
@@ -1755,8 +2460,13 @@ function ProjectDetails() {
                                   }
                                   className="inline-flex items-center gap-1 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 disabled:opacity-50"
                                 >
-                                  <XCircle size={14} />
+
+                                  <XCircle
+                                    size={14}
+                                  />
+
                                   Reject
+
                                 </button>
 
                               </div>
@@ -1789,6 +2499,225 @@ function ProjectDetails() {
       </div>
 
 
+      {/* PROJECT PROGRESS */}
+
+      <div className="mt-8 rounded-2xl border border-slate-200 bg-white">
+
+        <div className="flex flex-col gap-4 border-b border-slate-200 px-6 py-5 sm:flex-row sm:items-center sm:justify-between">
+
+          <div>
+
+            <h2 className="text-lg font-semibold text-slate-900">
+              Project Progress
+            </h2>
+
+            <p className="mt-1 text-sm text-slate-500">
+              Track construction stages, completion percentage, photos and videos.
+            </p>
+
+          </div>
+
+
+          {isMainAdmin && (
+
+            <button
+              onClick={() =>
+                setShowProgressModal(
+                  true
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
+            >
+
+              <Plus size={17} />
+
+              Add Progress
+
+            </button>
+
+          )}
+
+        </div>
+
+
+        <div className="p-6">
+
+          {progressUpdates.length === 0 ? (
+
+            <EmptyState
+              icon={
+                Building2
+              }
+              title="No progress updates yet"
+              text="Construction progress updates will appear here."
+            />
+
+          ) : (
+
+            <div className="relative">
+
+              <div className="absolute bottom-5 left-[15px] top-5 w-px bg-slate-200" />
+
+
+              <div className="space-y-6">
+
+                {progressUpdates.map(
+                  (progress) => (
+
+                    <div
+                      key={
+                        progress.id
+                      }
+                      className="relative pl-12"
+                    >
+
+                      <div className="absolute left-0 top-1 flex h-8 w-8 items-center justify-center rounded-full border-4 border-white bg-[#c5a66a] shadow-sm" />
+
+
+                      <div className="rounded-2xl border border-slate-200 p-5">
+
+                        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+
+                          <div>
+
+                            <p className="text-xs font-semibold uppercase tracking-wide text-[#9b7c3f]">
+                              {formatDate(
+                                progress.progress_date
+                              )}
+                            </p>
+
+                            <h3 className="mt-2 text-lg font-bold text-slate-900">
+                              {progress.stage}
+                            </h3>
+
+                          </div>
+
+
+                          <span className="rounded-full bg-[#f1eadc] px-3 py-1 text-sm font-bold text-[#8b6c35]">
+                            {progress.completion_percentage}%
+                          </span>
+
+                        </div>
+
+
+                        <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+
+                          <div
+                            className="h-full rounded-full bg-[#c5a66a]"
+                            style={{
+                              width:
+                                `${progress.completion_percentage}%`,
+                            }}
+                          />
+
+                        </div>
+
+
+                        {progress.caption && (
+
+                          <p className="mt-4 text-sm leading-6 text-slate-600">
+                            {progress.caption}
+                          </p>
+
+                        )}
+
+
+                        <div className="mt-5 flex flex-wrap gap-2">
+
+                          {progress.media_path && (
+
+                            <button
+                              onClick={() =>
+                                openProgressMedia(
+                                  progress
+                                )
+                              }
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700"
+                            >
+
+                              {progress.media_type ===
+                              "video" ? (
+
+                                <Video
+                                  size={16}
+                                />
+
+                              ) : (
+
+                                <Image
+                                  size={16}
+                                />
+
+                              )}
+
+                              View{" "}
+                              {progress.media_type ===
+                              "video"
+                                ? "Video"
+                                : "Photo"}
+
+                            </button>
+
+                          )}
+
+
+                          {isMainAdmin && (
+
+                            <button
+                              onClick={() =>
+                                deleteProgress(
+                                  progress
+                                )
+                              }
+                              disabled={
+                                deletingProgressId ===
+                                progress.id
+                              }
+                              className="inline-flex items-center gap-2 rounded-xl border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 disabled:opacity-50"
+                            >
+
+                              {deletingProgressId ===
+                              progress.id ? (
+
+                                <LoaderCircle
+                                  size={15}
+                                  className="animate-spin"
+                                />
+
+                              ) : (
+
+                                <Trash2
+                                  size={15}
+                                />
+
+                              )}
+
+                              Delete
+
+                            </button>
+
+                          )}
+
+                        </div>
+
+                      </div>
+
+                    </div>
+
+                  )
+                )}
+
+              </div>
+
+            </div>
+
+          )}
+
+        </div>
+
+      </div>
+
+
       {/* DOCUMENT MODAL */}
 
       {showDocumentModal && (
@@ -1796,7 +2725,9 @@ function ProjectDetails() {
         <Modal
           title="Add Project Document"
           onClose={() =>
-            setShowDocumentModal(false)
+            setShowDocumentModal(
+              false
+            )
           }
         >
 
@@ -1817,6 +2748,7 @@ function ProjectDetails() {
                   setDocumentForm(
                     (previous) => ({
                       ...previous,
+
                       title:
                         event.target.value,
                     })
@@ -1838,6 +2770,7 @@ function ProjectDetails() {
                   setDocumentForm(
                     (previous) => ({
                       ...previous,
+
                       category:
                         event.target.value,
                     })
@@ -1845,6 +2778,7 @@ function ProjectDetails() {
                 }
                 className="input-style bg-white"
               >
+
                 <option value="quantity_surveyor">
                   Quantity Surveyor
                 </option>
@@ -1868,6 +2802,7 @@ function ProjectDetails() {
                 <option value="other">
                   Other
                 </option>
+
               </select>
 
             </FormField>
@@ -1884,6 +2819,7 @@ function ProjectDetails() {
                   setDocumentForm(
                     (previous) => ({
                       ...previous,
+
                       description:
                         event.target.value,
                     })
@@ -1904,6 +2840,7 @@ function ProjectDetails() {
                   setDocumentForm(
                     (previous) => ({
                       ...previous,
+
                       file:
                         event.target.files?.[0] ||
                         null,
@@ -1922,7 +2859,9 @@ function ProjectDetails() {
               }
               actionLabel="Upload Document"
               onCancel={() =>
-                setShowDocumentModal(false)
+                setShowDocumentModal(
+                  false
+                )
               }
             />
 
@@ -1940,7 +2879,9 @@ function ProjectDetails() {
         <Modal
           title="Add Project Expense"
           onClose={() =>
-            setShowExpenseModal(false)
+            setShowExpenseModal(
+              false
+            )
           }
         >
 
@@ -1964,6 +2905,7 @@ function ProjectDetails() {
                     setExpenseForm(
                       (previous) => ({
                         ...previous,
+
                         expenseDate:
                           event.target.value,
                       })
@@ -1988,6 +2930,7 @@ function ProjectDetails() {
                     setExpenseForm(
                       (previous) => ({
                         ...previous,
+
                         amount:
                           event.target.value,
                       })
@@ -2011,12 +2954,12 @@ function ProjectDetails() {
                   setExpenseForm(
                     (previous) => ({
                       ...previous,
+
                       expenseTitle:
                         event.target.value,
                     })
                   )
                 }
-                placeholder="Architect payment"
                 className="input-style"
               />
 
@@ -2035,12 +2978,12 @@ function ProjectDetails() {
                     setExpenseForm(
                       (previous) => ({
                         ...previous,
+
                         category:
                           event.target.value,
                       })
                     )
                   }
-                  placeholder="Architecture"
                   className="input-style"
                 />
 
@@ -2057,6 +3000,7 @@ function ProjectDetails() {
                     setExpenseForm(
                       (previous) => ({
                         ...previous,
+
                         supplier:
                           event.target.value,
                       })
@@ -2080,6 +3024,7 @@ function ProjectDetails() {
                   setExpenseForm(
                     (previous) => ({
                       ...previous,
+
                       transactionReference:
                         event.target.value,
                     })
@@ -2102,6 +3047,7 @@ function ProjectDetails() {
                   setExpenseForm(
                     (previous) => ({
                       ...previous,
+
                       notes:
                         event.target.value,
                     })
@@ -2122,6 +3068,7 @@ function ProjectDetails() {
                   setExpenseForm(
                     (previous) => ({
                       ...previous,
+
                       evidence:
                         event.target.files?.[0] ||
                         null,
@@ -2130,10 +3077,6 @@ function ProjectDetails() {
                 }
                 className="input-style"
               />
-
-              <p className="mt-2 text-xs text-slate-400">
-                PDF, JPG or PNG. Maximum 5 MB.
-              </p>
 
             </FormField>
 
@@ -2144,7 +3087,175 @@ function ProjectDetails() {
               }
               actionLabel="Submit Expense"
               onCancel={() =>
-                setShowExpenseModal(false)
+                setShowExpenseModal(
+                  false
+                )
+              }
+            />
+
+          </form>
+
+        </Modal>
+
+      )}
+
+
+      {/* PROGRESS MODAL */}
+
+      {showProgressModal && (
+
+        <Modal
+          title="Add Project Progress"
+          onClose={() =>
+            setShowProgressModal(
+              false
+            )
+          }
+        >
+
+          <form
+            onSubmit={
+              submitProgress
+            }
+            className="space-y-5"
+          >
+
+            <div className="grid gap-5 md:grid-cols-2">
+
+              <FormField label="Progress Date *">
+
+                <input
+                  type="date"
+                  value={
+                    progressForm.progressDate
+                  }
+                  onChange={(event) =>
+                    setProgressForm(
+                      (previous) => ({
+                        ...previous,
+
+                        progressDate:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  className="input-style"
+                />
+
+              </FormField>
+
+
+              <FormField label="Completion % *">
+
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={
+                    progressForm.completionPercentage
+                  }
+                  onChange={(event) =>
+                    setProgressForm(
+                      (previous) => ({
+                        ...previous,
+
+                        completionPercentage:
+                          event.target.value,
+                      })
+                    )
+                  }
+                  placeholder="40"
+                  className="input-style"
+                />
+
+              </FormField>
+
+            </div>
+
+
+            <FormField label="Construction Stage *">
+
+              <input
+                value={
+                  progressForm.stage
+                }
+                onChange={(event) =>
+                  setProgressForm(
+                    (previous) => ({
+                      ...previous,
+
+                      stage:
+                        event.target.value,
+                    })
+                  )
+                }
+                placeholder="Foundation works completed"
+                className="input-style"
+              />
+
+            </FormField>
+
+
+            <FormField label="Progress Notes">
+
+              <textarea
+                rows={4}
+                value={
+                  progressForm.caption
+                }
+                onChange={(event) =>
+                  setProgressForm(
+                    (previous) => ({
+                      ...previous,
+
+                      caption:
+                        event.target.value,
+                    })
+                  )
+                }
+                placeholder="Describe what was completed during this stage..."
+                className="input-style"
+              />
+
+            </FormField>
+
+
+            <FormField label="Photo or Video">
+
+              <input
+                type="file"
+                accept=".jpg,.jpeg,.png,.webp,.mp4,.webm,.mov,image/*,video/*"
+                onChange={(event) =>
+                  setProgressForm(
+                    (previous) => ({
+                      ...previous,
+
+                      media:
+                        event.target.files?.[0] ||
+                        null,
+                    })
+                  )
+                }
+                className="input-style"
+              />
+
+
+              <p className="mt-2 text-xs text-slate-400">
+                Images up to 10 MB. Videos up to 100 MB.
+              </p>
+
+            </FormField>
+
+
+            <ModalButtons
+              loading={
+                savingProgress
+              }
+              actionLabel="Add Progress Update"
+              onCancel={() =>
+                setShowProgressModal(
+                  false
+                )
               }
             />
 
@@ -2160,7 +3271,7 @@ function ProjectDetails() {
 
 
 // ==================================================
-// COMPONENTS
+// HELPERS
 // ==================================================
 
 function SummaryCard({
@@ -2245,7 +3356,9 @@ function InfoRow({
         className="text-[#9b7c3f]"
       />
 
-      <span>{value}</span>
+      <span>
+        {value}
+      </span>
 
     </div>
   )
@@ -2334,10 +3447,17 @@ function Modal({
 
 
           <button
-            onClick={onClose}
+            type="button"
+            onClick={
+              onClose
+            }
             className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
           >
-            <X size={20} />
+
+            <X
+              size={20}
+            />
+
           </button>
 
         </div>
@@ -2364,7 +3484,9 @@ function ModalButtons({
 
       <button
         type="button"
-        onClick={onCancel}
+        onClick={
+          onCancel
+        }
         className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700"
       >
         Cancel
@@ -2373,17 +3495,25 @@ function ModalButtons({
 
       <button
         type="submit"
-        disabled={loading}
+        disabled={
+          loading
+        }
         className="inline-flex items-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-bold text-[#111315] disabled:opacity-50"
       >
 
         {loading ? (
+
           <LoaderCircle
             size={17}
             className="animate-spin"
           />
+
         ) : (
-          <Upload size={17} />
+
+          <Upload
+            size={17}
+          />
+
         )}
 
         {loading
@@ -2417,6 +3547,7 @@ function ProjectStatus({
       "bg-red-50 text-red-700",
   }
 
+
   return (
     <span
       className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${
@@ -2424,7 +3555,9 @@ function ProjectStatus({
         styles.planning
       }`}
     >
-      {formatProjectStatus(status)}
+      {formatProjectStatus(
+        status
+      )}
     </span>
   )
 }
@@ -2444,6 +3577,7 @@ function ExpenseStatus({
       "bg-red-50 text-red-700",
   }
 
+
   return (
     <span
       className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -2460,11 +3594,9 @@ function ExpenseStatus({
 }
 
 
-// ==================================================
-// FORMATTERS
-// ==================================================
-
-function formatProjectStatus(status) {
+function formatProjectStatus(
+  status
+) {
   const labels = {
     planning:
       "Planning",
@@ -2490,7 +3622,9 @@ function formatProjectStatus(status) {
 }
 
 
-function formatDocumentCategory(category) {
+function formatDocumentCategory(
+  category
+) {
   const labels = {
     quantity_surveyor:
       "Quantity Surveyor",
@@ -2527,7 +3661,9 @@ function formatKES(value) {
       maximumFractionDigits: 0,
     }
   ).format(
-    Number(value || 0)
+    Number(
+      value || 0
+    )
   )
 }
 
