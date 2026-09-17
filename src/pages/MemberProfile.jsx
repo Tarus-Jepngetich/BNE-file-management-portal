@@ -12,10 +12,23 @@ import {
   Clock3,
   CheckCircle2,
   XCircle,
+  ShieldCheck,
 } from "lucide-react"
 
 import { supabase } from "../lib/supabase"
 import { useAuth } from "../context/AuthContext"
+
+
+const MAX_EVIDENCE_SIZE =
+  5 * 1024 * 1024
+
+const ALLOWED_EVIDENCE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "application/pdf",
+]
+
 
 function MemberProfile() {
   const { memberId } = useParams()
@@ -24,6 +37,7 @@ function MemberProfile() {
     user,
     member: loggedInMember,
   } = useAuth()
+
 
   const [member, setMember] =
     useState(null)
@@ -56,12 +70,36 @@ function MemberProfile() {
       notes: "",
     })
 
-  const [evidenceFile, setEvidenceFile] =
-    useState(null)
+  const [
+    evidenceFile,
+    setEvidenceFile,
+  ] = useState(null)
+
+
+  // ==================================================
+  // PERMISSIONS
+  // ==================================================
+
+  const canAddContribution =
+    loggedInMember?.portal_role ===
+      "main_admin" ||
+    loggedInMember?.portal_role ===
+      "treasurer" ||
+    loggedInMember?.id === memberId
+
+
+  const isOwnProfile =
+    loggedInMember?.id === memberId
+
+
+  // ==================================================
+  // LOAD PAGE
+  // ==================================================
 
   useEffect(() => {
     loadPage()
   }, [memberId])
+
 
   const loadPage = async () => {
     try {
@@ -102,26 +140,42 @@ function MemberProfile() {
             rejection_reason,
             created_at
           `)
-          .eq("member_id", memberId)
-          .order("payment_date", {
-            ascending: false,
-          }),
+          .eq(
+            "member_id",
+            memberId
+          )
+          .order(
+            "payment_date",
+            {
+              ascending: false,
+            }
+          ),
       ])
+
 
       if (memberResult.error) {
         throw memberResult.error
       }
 
-      if (contributionResult.error) {
+
+      if (
+        contributionResult.error
+      ) {
         throw contributionResult.error
       }
 
-      setMember(memberResult.data)
+
+      setMember(
+        memberResult.data
+      )
 
       setContributions(
-        contributionResult.data || []
+        contributionResult.data ||
+          []
       )
+
     } catch (error) {
+
       console.error(
         "Member profile error:",
         error
@@ -129,24 +183,35 @@ function MemberProfile() {
 
       setError(
         error.message ||
-        "Unable to load member profile."
+          "Unable to load member profile."
       )
+
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChange = (event) => {
-    const {
-      name,
-      value,
-    } = event.target
 
-    setForm((previous) => ({
-      ...previous,
-      [name]: value,
-    }))
-  }
+  // ==================================================
+  // FORM
+  // ==================================================
+
+  const handleChange =
+    (event) => {
+      const {
+        name,
+        value,
+      } = event.target
+
+
+      setForm(
+        (previous) => ({
+          ...previous,
+          [name]: value,
+        })
+      )
+    }
+
 
   const resetForm = () => {
     setForm({
@@ -161,64 +226,211 @@ function MemberProfile() {
     setEvidenceFile(null)
   }
 
-  const handleCloseModal = () => {
-    if (saving) return
 
-    setShowModal(false)
-    resetForm()
-  }
+  const handleCloseModal =
+    () => {
+      if (saving) {
+        return
+      }
+
+      setShowModal(false)
+      resetForm()
+    }
+
+
+  // ==================================================
+  // FILE VALIDATION
+  // ==================================================
+
+  const validateEvidenceFile =
+    (file) => {
+
+      if (!file) {
+        return
+      }
+
+
+      if (
+        !ALLOWED_EVIDENCE_TYPES.includes(
+          file.type
+        )
+      ) {
+        throw new Error(
+          "Payment evidence must be a JPG, PNG, WEBP or PDF file."
+        )
+      }
+
+
+      if (
+        file.size >
+        MAX_EVIDENCE_SIZE
+      ) {
+        throw new Error(
+          "Payment evidence must be 5 MB or smaller."
+        )
+      }
+    }
+
+
+  const handleEvidenceChange =
+    (event) => {
+
+      try {
+        setError("")
+
+        const file =
+          event.target.files?.[0] ||
+          null
+
+
+        if (!file) {
+          setEvidenceFile(null)
+          return
+        }
+
+
+        validateEvidenceFile(
+          file
+        )
+
+
+        setEvidenceFile(file)
+
+      } catch (error) {
+
+        event.target.value = ""
+
+        setEvidenceFile(null)
+
+        setError(
+          error.message ||
+            "Invalid payment evidence."
+        )
+      }
+    }
+
+
+  // ==================================================
+  // EVIDENCE UPLOAD
+  // ==================================================
 
   const uploadEvidence =
     async () => {
+
       if (!evidenceFile) {
         return null
       }
 
+
+      if (!user?.id) {
+        throw new Error(
+          "You must be logged in before uploading evidence."
+        )
+      }
+
+
+      validateEvidenceFile(
+        evidenceFile
+      )
+
+
       const extension =
-        evidenceFile.name
-          .split(".")
-          .pop()
-          ?.toLowerCase() || "file"
+        getSafeExtension(
+          evidenceFile
+        )
+
+
+      /*
+        SECURITY:
+
+        USER-ID/
+          MEMBER-ID/
+            RANDOM-FILE
+
+        The Storage RLS policy checks
+        the first folder against auth.uid().
+      */
 
       const filePath =
-        `${memberId}/${crypto.randomUUID()}.${extension}`
+        `${user.id}/${memberId}/${crypto.randomUUID()}.${extension}`
+
 
       const {
         error,
-      } = await supabase.storage
-        .from(
-          "contribution-evidence"
-        )
-        .upload(
-          filePath,
-          evidenceFile,
-          {
-            cacheControl: "3600",
-            upsert: false,
-          }
-        )
+      } =
+        await supabase.storage
+          .from(
+            "contribution-evidence"
+          )
+          .upload(
+            filePath,
+            evidenceFile,
+            {
+              cacheControl:
+                "3600",
+
+              upsert: false,
+
+              contentType:
+                evidenceFile.type,
+            }
+          )
+
 
       if (error) {
         throw error
       }
 
+
       return filePath
     }
 
+
+  // ==================================================
+  // CONTRIBUTION SUBMISSION
+  // ==================================================
+
   const handleSubmit =
     async (event) => {
+
       event.preventDefault()
+
+      let uploadedEvidencePath =
+        null
+
 
       try {
         setSaving(true)
         setError("")
         setMessage("")
 
+
         if (!user) {
           throw new Error(
             "You must be logged in."
           )
         }
+
+
+        if (
+          !loggedInMember ||
+          loggedInMember.account_status !==
+            "approved"
+        ) {
+          throw new Error(
+            "Your BNE account is not approved."
+          )
+        }
+
+
+        if (
+          !canAddContribution
+        ) {
+          throw new Error(
+            "You do not have permission to add a contribution for this member."
+          )
+        }
+
 
         if (
           !form.amount ||
@@ -229,6 +441,18 @@ function MemberProfile() {
           )
         }
 
+
+        if (
+          !Number.isFinite(
+            Number(form.amount)
+          )
+        ) {
+          throw new Error(
+            "Enter a valid contribution amount."
+          )
+        }
+
+
         if (
           !form.contributionType.trim()
         ) {
@@ -237,195 +461,215 @@ function MemberProfile() {
           )
         }
 
+
         if (!form.paymentDate) {
           throw new Error(
             "Select the payment date."
           )
         }
 
-        let evidencePath = null
 
         if (evidenceFile) {
-          evidencePath =
+          validateEvidenceFile(
+            evidenceFile
+          )
+
+          uploadedEvidencePath =
             await uploadEvidence()
         }
 
+
         const {
           error,
-        } = await supabase
-          .from("contributions")
-          .insert({
-            member_id: memberId,
+        } =
+          await supabase
+            .from(
+              "contributions"
+            )
+            .insert({
+              member_id:
+                memberId,
 
-            amount:
-              Number(form.amount),
+              amount:
+                Number(
+                  form.amount
+                ),
 
-            contribution_type:
-              form.contributionType.trim(),
+              contribution_type:
+                form.contributionType.trim(),
 
-            payment_date:
-              form.paymentDate,
+              payment_date:
+                form.paymentDate,
 
-            payment_method:
-              form.paymentMethod.trim() ||
-              null,
+              payment_method:
+                form.paymentMethod.trim() ||
+                null,
 
-            transaction_reference:
-              form.transactionReference.trim() ||
-              null,
+              transaction_reference:
+                form.transactionReference.trim() ||
+                null,
 
-            notes:
-              form.notes.trim() ||
-              null,
+              notes:
+                form.notes.trim() ||
+                null,
 
-            evidence_path:
-              evidencePath,
+              evidence_path:
+                uploadedEvidencePath,
 
-            submitted_by:
-              user.id,
+              submitted_by:
+                user.id,
 
-            approval_status:
-              "pending",
+              approval_status:
+                "pending",
 
-            approved_by:
-              null,
+              approved_by:
+                null,
 
-            approved_at:
-              null,
-          })
+              approved_at:
+                null,
+
+              rejection_reason:
+                null,
+            })
+
 
         if (error) {
+          /*
+            If Storage succeeded but the
+            database INSERT failed, remove
+            the orphaned file.
+          */
+
+          if (
+            uploadedEvidencePath
+          ) {
+            const {
+              error:
+                cleanupError,
+            } =
+              await supabase.storage
+                .from(
+                  "contribution-evidence"
+                )
+                .remove([
+                  uploadedEvidencePath,
+                ])
+
+
+            if (cleanupError) {
+              console.error(
+                "Evidence cleanup error:",
+                cleanupError
+              )
+            }
+          }
+
+
           throw error
         }
+
 
         setMessage(
           "Contribution submitted successfully and is waiting for approval."
         )
 
+
         setShowModal(false)
         resetForm()
 
         await loadPage()
+
       } catch (error) {
+
         console.error(
           "Contribution submission error:",
           error
         )
 
+
         setError(
-          error.message ||
-          "Unable to submit contribution."
+          friendlyErrorMessage(
+            error
+          )
         )
+
       } finally {
         setSaving(false)
       }
     }
 
+
+  // ==================================================
+  // VIEW EVIDENCE
+  // ==================================================
+
   const handleViewEvidence =
     async (path) => {
+
       try {
         setError("")
 
+
         if (!path) {
-          setError(
+          throw new Error(
             "No payment evidence is attached to this contribution."
           )
-          return
         }
+
 
         const {
           data,
           error,
-        } = await supabase.storage
-          .from(
-            "contribution-evidence"
-          )
-          .createSignedUrl(
-            path,
-            60
-          )
+        } =
+          await supabase.storage
+            .from(
+              "contribution-evidence"
+            )
+            .createSignedUrl(
+              path,
+              60
+            )
+
 
         if (error) {
           throw error
         }
+
+
+        if (
+          !data?.signedUrl
+        ) {
+          throw new Error(
+            "Unable to create a secure evidence link."
+          )
+        }
+
 
         window.open(
           data.signedUrl,
           "_blank",
           "noopener,noreferrer"
         )
+
       } catch (error) {
+
         console.error(
           "Evidence error:",
           error
         )
 
+
         setError(
           error.message ||
-          "Unable to open evidence."
+            "Unable to open evidence."
         )
       }
     }
 
-  const formatCurrency =
-    (amount) => {
-      return new Intl.NumberFormat(
-        "en-KE",
-        {
-          style: "currency",
-          currency: "KES",
-          maximumFractionDigits: 0,
-        }
-      ).format(
-        Number(amount) || 0
-      )
-    }
 
-  const formatDate =
-    (date) => {
-      if (!date) {
-        return "—"
-      }
-
-      return new Date(
-        `${date}T00:00:00`
-      ).toLocaleDateString(
-        "en-GB",
-        {
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-        }
-      )
-    }
-
-  const getStatusStyle =
-    (status) => {
-      if (status === "approved") {
-        return {
-          label: "Approved",
-          className:
-            "bg-green-50 text-green-700",
-          icon: CheckCircle2,
-        }
-      }
-
-      if (status === "rejected") {
-        return {
-          label: "Rejected",
-          className:
-            "bg-red-50 text-red-700",
-          icon: XCircle,
-        }
-      }
-
-      return {
-        label: "Pending",
-        className:
-          "bg-amber-50 text-amber-700",
-        icon: Clock3,
-      }
-    }
+  // ==================================================
+  // TOTALS
+  // ==================================================
 
   const approvedTotal =
     contributions
@@ -437,14 +681,40 @@ function MemberProfile() {
       .reduce(
         (total, item) =>
           total +
-          Number(item.amount),
+          Number(
+            item.amount || 0
+          ),
         0
       )
+
+
+  const pendingTotal =
+    contributions
+      .filter(
+        (item) =>
+          item.approval_status ===
+          "pending"
+      )
+      .reduce(
+        (total, item) =>
+          total +
+          Number(
+            item.amount || 0
+          ),
+        0
+      )
+
+
+  // ==================================================
+  // LOADING
+  // ==================================================
 
   if (loading) {
     return (
       <div className="flex min-h-[450px] items-center justify-center">
+
         <div className="text-center">
+
           <LoaderCircle
             size={34}
             className="mx-auto animate-spin text-[#9b7c3f]"
@@ -453,61 +723,110 @@ function MemberProfile() {
           <p className="mt-3 text-sm text-slate-500">
             Loading member profile...
           </p>
+
         </div>
+
       </div>
     )
   }
+
 
   if (!member) {
     return (
       <div className="rounded-2xl border border-red-200 bg-red-50 p-8">
+
         <h1 className="text-xl font-bold text-red-700">
           Member not found
         </h1>
+
       </div>
     )
   }
 
+
   return (
     <div>
+
+      {/* HEADER */}
+
       <div className="flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
+
         <div className="flex items-center gap-5">
+
           <div className="flex h-24 w-24 items-center justify-center rounded-full bg-[#f1eadc] text-[#9b7c3f]">
-            <UserRound size={42} />
+
+            <UserRound
+              size={42}
+            />
+
           </div>
 
+
           <div>
+
             <p className="text-sm font-semibold uppercase tracking-wider text-[#9b7c3f]">
               Member Profile
             </p>
+
 
             <h1 className="mt-1 text-3xl font-bold text-slate-900">
               {member.full_name}
             </h1>
 
+
             <p className="mt-1 text-slate-500">
               {member.company_position}
             </p>
+
 
             {member.email && (
               <p className="mt-1 text-sm text-slate-400">
                 {member.email}
               </p>
             )}
+
+
+            {isOwnProfile && (
+              <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-[#f1eadc] px-3 py-1 text-xs font-semibold text-[#8b6c35]">
+
+                <ShieldCheck
+                  size={13}
+                />
+
+                Your Profile
+
+              </span>
+            )}
+
           </div>
+
         </div>
 
-        <button
-          onClick={() =>
-            setShowModal(true)
-          }
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 font-semibold text-[#111315] transition hover:bg-[#d2b77d]"
-        >
-          <Plus size={18} />
 
-          Add Contribution
-        </button>
+        {canAddContribution && (
+
+          <button
+            type="button"
+            onClick={() => {
+              setError("")
+              setMessage("")
+              setShowModal(true)
+            }}
+            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 font-semibold text-[#111315] transition hover:bg-[#d2b77d]"
+          >
+
+            <Plus size={18} />
+
+            Add Contribution
+
+          </button>
+
+        )}
+
       </div>
+
+
+      {/* MESSAGES */}
 
       {error && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -515,19 +834,37 @@ function MemberProfile() {
         </div>
       )}
 
+
       {message && (
         <div className="mt-6 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
           {message}
         </div>
       )}
 
-      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-3">
+
+      {/* SUMMARY */}
+
+      <div className="mt-8 grid grid-cols-1 gap-5 md:grid-cols-4">
+
         <SummaryCard
           label="Approved Contributions"
-          value={formatCurrency(
-            approvedTotal
-          )}
+          value={
+            formatCurrency(
+              approvedTotal
+            )
+          }
         />
+
+
+        <SummaryCard
+          label="Pending"
+          value={
+            formatCurrency(
+              pendingTotal
+            )
+          }
+        />
+
 
         <SummaryCard
           label="Total Records"
@@ -535,6 +872,7 @@ function MemberProfile() {
             contributions.length
           }
         />
+
 
         <SummaryCard
           label="Evidence Files"
@@ -545,10 +883,16 @@ function MemberProfile() {
             ).length
           }
         />
+
       </div>
 
+
+      {/* CONTRIBUTION HISTORY */}
+
       <div className="mt-8 rounded-2xl border border-slate-200 bg-white">
+
         <div className="border-b border-slate-200 px-6 py-5">
+
           <h2 className="text-lg font-semibold text-slate-900">
             Contribution History
           </h2>
@@ -556,10 +900,15 @@ function MemberProfile() {
           <p className="mt-1 text-sm text-slate-500">
             Approved, pending and rejected contribution records.
           </p>
+
         </div>
 
-        {contributions.length === 0 ? (
+
+        {contributions.length ===
+        0 ? (
+
           <div className="p-12 text-center">
+
             <Receipt
               size={36}
               className="mx-auto text-slate-300"
@@ -570,14 +919,25 @@ function MemberProfile() {
             </h3>
 
             <p className="mt-2 text-sm text-slate-500">
-              Add the first contribution for this member.
+
+              {canAddContribution
+                ? "Add the first contribution for this member."
+                : "No contribution records have been added for this member."}
+
             </p>
+
           </div>
+
         ) : (
+
           <div className="overflow-x-auto">
+
             <table className="w-full">
+
               <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+
                 <tr>
+
                   <th className="px-6 py-4">
                     Date
                   </th>
@@ -591,6 +951,10 @@ function MemberProfile() {
                   </th>
 
                   <th className="px-6 py-4">
+                    Method
+                  </th>
+
+                  <th className="px-6 py-4">
                     Reference
                   </th>
 
@@ -601,12 +965,17 @@ function MemberProfile() {
                   <th className="px-6 py-4">
                     Evidence
                   </th>
+
                 </tr>
+
               </thead>
 
+
               <tbody className="divide-y divide-slate-100">
+
                 {contributions.map(
                   (contribution) => {
+
                     const status =
                       getStatusStyle(
                         contribution.approval_status
@@ -615,6 +984,7 @@ function MemberProfile() {
                     const StatusIcon =
                       status.icon
 
+
                     return (
                       <tr
                         key={
@@ -622,56 +992,92 @@ function MemberProfile() {
                         }
                         className="text-sm"
                       >
-                        <td className="px-6 py-4 text-slate-600">
+
+                        <td className="whitespace-nowrap px-6 py-4 text-slate-600">
+
                           {formatDate(
                             contribution.payment_date
                           )}
+
                         </td>
 
+
                         <td className="px-6 py-4 font-medium text-slate-900">
+
                           {
                             contribution.contribution_type
                           }
+
                         </td>
 
-                        <td className="px-6 py-4 font-semibold text-slate-900">
+
+                        <td className="whitespace-nowrap px-6 py-4 font-semibold text-slate-900">
+
                           {formatCurrency(
                             contribution.amount
                           )}
+
                         </td>
 
+
                         <td className="px-6 py-4 text-slate-600">
+
+                          {
+                            contribution.payment_method ||
+                            "—"
+                          }
+
+                        </td>
+
+
+                        <td className="px-6 py-4 text-slate-600">
+
                           {
                             contribution.transaction_reference ||
                             "—"
                           }
+
                         </td>
 
+
                         <td className="px-6 py-4">
+
                           <span
                             className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${status.className}`}
                           >
+
                             <StatusIcon
                               size={13}
                             />
 
                             {status.label}
+
                           </span>
+
 
                           {contribution.approval_status ===
                             "rejected" &&
                             contribution.rejection_reason && (
+
                               <p className="mt-2 max-w-xs text-xs text-red-500">
+
                                 {
                                   contribution.rejection_reason
                                 }
+
                               </p>
+
                             )}
+
                         </td>
 
+
                         <td className="px-6 py-4">
+
                           {contribution.evidence_path ? (
+
                             <button
+                              type="button"
                               onClick={() =>
                                 handleViewEvidence(
                                   contribution.evidence_path
@@ -679,6 +1085,7 @@ function MemberProfile() {
                               }
                               className="inline-flex items-center gap-2 text-sm font-semibold text-[#9b7c3f] hover:underline"
                             >
+
                               <Receipt
                                 size={16}
                               />
@@ -688,223 +1095,347 @@ function MemberProfile() {
                               <ExternalLink
                                 size={13}
                               />
+
                             </button>
+
                           ) : (
+
                             <span className="text-slate-400">
                               —
                             </span>
+
                           )}
+
                         </td>
+
                       </tr>
                     )
                   }
                 )}
+
               </tbody>
+
             </table>
+
           </div>
+
         )}
+
       </div>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">
-                  Add Contribution
-                </h2>
 
-                <p className="mt-1 text-sm text-slate-500">
-                  Record a contribution for {member.full_name}.
-                </p>
-              </div>
+      {/* ADD CONTRIBUTION MODAL */}
 
-              <button
-                onClick={
-                  handleCloseModal
-                }
-                disabled={saving}
-                className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
-              >
-                <X size={20} />
-              </button>
-            </div>
+      {showModal &&
+        canAddContribution && (
 
-            <form
-              onSubmit={
-                handleSubmit
-              }
-              className="space-y-5 p-6"
-            >
-              <div className="grid gap-5 md:grid-cols-2">
-                <Input
-                  label="Amount"
-                  name="amount"
-                  type="number"
-                  min="1"
-                  step="0.01"
-                  value={form.amount}
-                  onChange={
-                    handleChange
-                  }
-                  placeholder="500000"
-                  required
-                />
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8">
 
-                <Input
-                  label="Contribution Type"
-                  name="contributionType"
-                  value={
-                    form.contributionType
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  placeholder="Land Deposit"
-                  required
-                />
+            <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl bg-white shadow-2xl">
 
-                <Input
-                  label="Payment Date"
-                  name="paymentDate"
-                  type="date"
-                  value={
-                    form.paymentDate
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  required
-                />
+              <div className="flex items-center justify-between border-b border-slate-200 px-6 py-5">
 
-                <Input
-                  label="Payment Method"
-                  name="paymentMethod"
-                  value={
-                    form.paymentMethod
-                  }
-                  onChange={
-                    handleChange
-                  }
-                  placeholder="Bank Transfer"
-                />
+                <div>
 
-                <div className="md:col-span-2">
-                  <Input
-                    label="Transaction / Reference Number"
-                    name="transactionReference"
-                    value={
-                      form.transactionReference
-                    }
-                    onChange={
-                      handleChange
-                    }
-                    placeholder="Transaction reference"
-                  />
+                  <h2 className="text-xl font-bold text-slate-900">
+                    Add Contribution
+                  </h2>
+
+                  <p className="mt-1 text-sm text-slate-500">
+                    Record a contribution for{" "}
+                    {member.full_name}.
+                  </p>
+
                 </div>
 
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Notes
-                  </label>
 
-                  <textarea
-                    name="notes"
-                    value={form.notes}
-                    onChange={
-                      handleChange
-                    }
-                    rows={4}
-                    placeholder="Optional notes..."
-                    className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#c5a66a]"
-                  />
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Payment Evidence
-                  </label>
-
-                  <label className="flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 transition hover:border-[#c5a66a]">
-                    <Upload
-                      size={22}
-                      className="text-[#9b7c3f]"
-                    />
-
-                    <div>
-                      <p className="text-sm font-semibold text-slate-700">
-                        {evidenceFile
-                          ? evidenceFile.name
-                          : "Choose screenshot, image or PDF"}
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-400">
-                        Stored privately in Supabase Storage
-                      </p>
-                    </div>
-
-                    <input
-                      type="file"
-                      accept="image/*,.pdf"
-                      onChange={(event) =>
-                        setEvidenceFile(
-                          event.target
-                            .files?.[0] ||
-                            null
-                        )
-                      }
-                      className="hidden"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-                <p className="text-sm text-amber-700">
-                  This contribution will be submitted as Pending. Only an approved Treasurer or Main Admin can approve it.
-                </p>
-              </div>
-
-              <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
                 <button
                   type="button"
                   onClick={
                     handleCloseModal
                   }
-                  disabled={saving}
-                  className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700"
+                  disabled={
+                    saving
+                  }
+                  className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
                 >
-                  Cancel
+
+                  <X size={20} />
+
                 </button>
 
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-semibold text-[#111315] transition hover:bg-[#d2b77d] disabled:opacity-50"
-                >
-                  {saving && (
-                    <LoaderCircle
-                      size={17}
-                      className="animate-spin"
-                    />
-                  )}
-
-                  {saving
-                    ? "Submitting..."
-                    : "Submit Contribution"}
-                </button>
               </div>
-            </form>
+
+
+              <form
+                onSubmit={
+                  handleSubmit
+                }
+                className="space-y-5 p-6"
+              >
+
+                <div className="grid gap-5 md:grid-cols-2">
+
+                  <Input
+                    label="Amount"
+                    name="amount"
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    value={
+                      form.amount
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    placeholder="500000"
+                    required
+                  />
+
+
+                  <Input
+                    label="Contribution Type"
+                    name="contributionType"
+                    value={
+                      form.contributionType
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    placeholder="Land Deposit"
+                    required
+                  />
+
+
+                  <Input
+                    label="Payment Date"
+                    name="paymentDate"
+                    type="date"
+                    value={
+                      form.paymentDate
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    required
+                  />
+
+
+                  <Input
+                    label="Payment Method"
+                    name="paymentMethod"
+                    value={
+                      form.paymentMethod
+                    }
+                    onChange={
+                      handleChange
+                    }
+                    placeholder="Bank Transfer"
+                  />
+
+
+                  <div className="md:col-span-2">
+
+                    <Input
+                      label="Transaction / Reference Number"
+                      name="transactionReference"
+                      value={
+                        form.transactionReference
+                      }
+                      onChange={
+                        handleChange
+                      }
+                      placeholder="Transaction reference"
+                    />
+
+                  </div>
+
+
+                  <div className="md:col-span-2">
+
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Notes
+                    </label>
+
+                    <textarea
+                      name="notes"
+                      value={
+                        form.notes
+                      }
+                      onChange={
+                        handleChange
+                      }
+                      rows={4}
+                      placeholder="Optional notes..."
+                      className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#c5a66a]"
+                    />
+
+                  </div>
+
+
+                  <div className="md:col-span-2">
+
+                    <label className="mb-2 block text-sm font-medium text-slate-700">
+                      Payment Evidence
+                    </label>
+
+
+                    <label className="flex cursor-pointer items-center justify-center gap-3 rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-8 transition hover:border-[#c5a66a]">
+
+                      <Upload
+                        size={22}
+                        className="shrink-0 text-[#9b7c3f]"
+                      />
+
+
+                      <div className="min-w-0">
+
+                        <p className="truncate text-sm font-semibold text-slate-700">
+
+                          {evidenceFile
+                            ? evidenceFile.name
+                            : "Choose JPG, PNG, WEBP or PDF"}
+
+                        </p>
+
+
+                        <p className="mt-1 text-xs text-slate-400">
+                          Private storage • Maximum 5 MB
+                        </p>
+
+                      </div>
+
+
+                      <input
+                        type="file"
+                        accept=".jpg,.jpeg,.png,.webp,.pdf,image/jpeg,image/png,image/webp,application/pdf"
+                        onChange={
+                          handleEvidenceChange
+                        }
+                        className="hidden"
+                      />
+
+                    </label>
+
+
+                    {evidenceFile && (
+
+                      <div className="mt-3 flex items-center justify-between rounded-xl bg-slate-50 px-4 py-3">
+
+                        <div className="min-w-0">
+
+                          <p className="truncate text-sm font-medium text-slate-700">
+                            {evidenceFile.name}
+                          </p>
+
+                          <p className="mt-1 text-xs text-slate-400">
+
+                            {formatFileSize(
+                              evidenceFile.size
+                            )}
+
+                          </p>
+
+                        </div>
+
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setEvidenceFile(
+                              null
+                            )
+                          }
+                          disabled={
+                            saving
+                          }
+                          className="ml-4 text-xs font-semibold text-red-500"
+                        >
+                          Remove
+                        </button>
+
+                      </div>
+
+                    )}
+
+                  </div>
+
+                </div>
+
+
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+
+                  <p className="text-sm leading-6 text-amber-700">
+                    This contribution will be submitted as Pending. Its financial details cannot be directly changed after submission. A Treasurer or Main Admin must review it before it counts toward official company totals.
+                  </p>
+
+                </div>
+
+
+                <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+
+                  <button
+                    type="button"
+                    onClick={
+                      handleCloseModal
+                    }
+                    disabled={
+                      saving
+                    }
+                    className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+
+
+                  <button
+                    type="submit"
+                    disabled={
+                      saving
+                    }
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-semibold text-[#111315] transition hover:bg-[#d2b77d] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+
+                    {saving && (
+
+                      <LoaderCircle
+                        size={17}
+                        className="animate-spin"
+                      />
+
+                    )}
+
+
+                    {saving
+                      ? "Submitting..."
+                      : "Submit Contribution"}
+
+                  </button>
+
+                </div>
+
+              </form>
+
+            </div>
+
           </div>
-        </div>
-      )}
+
+        )}
+
 
       <div className="mt-4 text-xs text-slate-400">
-        Logged in as {loggedInMember?.full_name}
+        Logged in as{" "}
+        {loggedInMember?.full_name}
       </div>
+
     </div>
   )
 }
+
+
+// ==================================================
+// COMPONENTS
+// ==================================================
 
 function SummaryCard({
   label,
@@ -912,6 +1443,7 @@ function SummaryCard({
 }) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-6">
+
       <p className="text-sm text-slate-500">
         {label}
       </p>
@@ -919,9 +1451,11 @@ function SummaryCard({
       <p className="mt-2 text-2xl font-bold text-slate-900">
         {value}
       </p>
+
     </div>
   )
 }
+
 
 function Input({
   label,
@@ -929,6 +1463,7 @@ function Input({
 }) {
   return (
     <div>
+
       <label className="mb-2 block text-sm font-medium text-slate-700">
         {label}
       </label>
@@ -937,8 +1472,166 @@ function Input({
         {...props}
         className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm outline-none transition focus:border-[#c5a66a]"
       />
+
     </div>
   )
 }
+
+
+// ==================================================
+// HELPERS
+// ==================================================
+
+function getSafeExtension(
+  file
+) {
+  const extensionMap = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "application/pdf": "pdf",
+  }
+
+
+  return (
+    extensionMap[
+      file.type
+    ] || "file"
+  )
+}
+
+
+function friendlyErrorMessage(
+  error
+) {
+  const message =
+    error?.message ||
+    "Unable to submit contribution."
+
+
+  if (
+    message
+      .toLowerCase()
+      .includes(
+        "row-level security"
+      )
+  ) {
+    return "You do not have permission to submit this contribution."
+  }
+
+
+  return message
+}
+
+
+function formatCurrency(
+  amount
+) {
+  return new Intl.NumberFormat(
+    "en-KE",
+    {
+      style: "currency",
+      currency: "KES",
+      maximumFractionDigits: 0,
+    }
+  ).format(
+    Number(amount) || 0
+  )
+}
+
+
+function formatDate(
+  date
+) {
+  if (!date) {
+    return "—"
+  }
+
+
+  return new Date(
+    `${date}T00:00:00`
+  ).toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  )
+}
+
+
+function formatFileSize(
+  bytes
+) {
+  if (!bytes) {
+    return "0 KB"
+  }
+
+
+  if (
+    bytes <
+    1024 * 1024
+  ) {
+    return `${(
+      bytes / 1024
+    ).toFixed(1)} KB`
+  }
+
+
+  return `${(
+    bytes /
+    (1024 * 1024)
+  ).toFixed(1)} MB`
+}
+
+
+function getStatusStyle(
+  status
+) {
+  if (
+    status === "approved"
+  ) {
+    return {
+      label:
+        "Approved",
+
+      className:
+        "bg-green-50 text-green-700",
+
+      icon:
+        CheckCircle2,
+    }
+  }
+
+
+  if (
+    status === "rejected"
+  ) {
+    return {
+      label:
+        "Rejected",
+
+      className:
+        "bg-red-50 text-red-700",
+
+      icon:
+        XCircle,
+    }
+  }
+
+
+  return {
+    label:
+      "Pending",
+
+    className:
+      "bg-amber-50 text-amber-700",
+
+    icon:
+      Clock3,
+  }
+}
+
 
 export default MemberProfile

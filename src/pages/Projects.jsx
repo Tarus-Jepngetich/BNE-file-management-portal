@@ -7,19 +7,21 @@ import {
 import { useNavigate } from "react-router-dom"
 
 import {
+  Archive,
+  ArchiveRestore,
   Building2,
   CalendarDays,
+  CheckCircle2,
   CircleDollarSign,
   Clock3,
+  FileText,
+  Hammer,
   LoaderCircle,
   MapPin,
+  PauseCircle,
   Plus,
   Search,
   X,
-  CheckCircle2,
-  PauseCircle,
-  Hammer,
-  FileText,
 } from "lucide-react"
 
 import { supabase } from "../lib/supabase"
@@ -39,11 +41,18 @@ function Projects() {
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
 
+  const [processingProjectId, setProcessingProjectId] =
+    useState(null)
+
   const [error, setError] = useState("")
   const [message, setMessage] = useState("")
 
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const [statusFilter, setStatusFilter] =
+    useState("all")
+
+  const [projectView, setProjectView] =
+    useState("active")
 
   const [showCreateModal, setShowCreateModal] =
     useState(false)
@@ -191,6 +200,8 @@ function Projects() {
         "Project created successfully."
       )
 
+      setProjectView("active")
+
       await loadProjects()
     } catch (error) {
       console.error(
@@ -208,11 +219,141 @@ function Projects() {
   }
 
 
+  const archiveProject = async (project) => {
+    if (!isMainAdmin) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Archive "${project.title}"?\n\n` +
+        "The project will be removed from the active project list, " +
+        "but its documents, expenses and progress history will be preserved."
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setProcessingProjectId(project.id)
+      setError("")
+      setMessage("")
+
+      const { error } =
+        await supabase.rpc(
+          "archive_project",
+          {
+            p_project_id: project.id,
+          }
+        )
+
+      if (error) {
+        throw error
+      }
+
+      setMessage(
+        `"${project.title}" was archived successfully.`
+      )
+
+      await loadProjects()
+    } catch (error) {
+      console.error(
+        "Archive project error:",
+        error
+      )
+
+      setError(
+        error.message ||
+          "Unable to archive project."
+      )
+    } finally {
+      setProcessingProjectId(null)
+    }
+  }
+
+
+  const restoreProject = async (project) => {
+    if (!isMainAdmin) {
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Restore "${project.title}" to active projects?`
+    )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setProcessingProjectId(project.id)
+      setError("")
+      setMessage("")
+
+      const { error } =
+        await supabase.rpc(
+          "restore_project",
+          {
+            p_project_id: project.id,
+          }
+        )
+
+      if (error) {
+        throw error
+      }
+
+      setMessage(
+        `"${project.title}" was restored successfully.`
+      )
+
+      await loadProjects()
+    } catch (error) {
+      console.error(
+        "Restore project error:",
+        error
+      )
+
+      setError(
+        error.message ||
+          "Unable to restore project."
+      )
+    } finally {
+      setProcessingProjectId(null)
+    }
+  }
+
+
+  const activeProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          project.is_archived !== true
+      ),
+    [projects]
+  )
+
+
+  const archivedProjects = useMemo(
+    () =>
+      projects.filter(
+        (project) =>
+          project.is_archived === true
+      ),
+    [projects]
+  )
+
+
+  const visibleProjects =
+    projectView === "archived"
+      ? archivedProjects
+      : activeProjects
+
+
   const filteredProjects = useMemo(() => {
     const query =
       search.trim().toLowerCase()
 
-    return projects.filter(
+    return visibleProjects.filter(
       (project) => {
         const matchesStatus =
           statusFilter === "all" ||
@@ -238,35 +379,44 @@ function Projects() {
       }
     )
   }, [
-    projects,
+    visibleProjects,
     search,
     statusFilter,
   ])
 
 
   const totalProjects =
-    projects.length
+    activeProjects.length
 
   const ongoingProjects =
-    projects.filter(
+    activeProjects.filter(
       (project) =>
         project.project_status ===
         "ongoing"
     ).length
 
   const completedProjects =
-    projects.filter(
+    activeProjects.filter(
       (project) =>
         project.project_status ===
         "completed"
     ).length
 
   const planningProjects =
-    projects.filter(
+    activeProjects.filter(
       (project) =>
         project.project_status ===
         "planning"
     ).length
+
+
+  const changeProjectView = (view) => {
+    setProjectView(view)
+    setStatusFilter("all")
+    setSearch("")
+    setError("")
+    setMessage("")
+  }
 
 
   if (loading) {
@@ -348,7 +498,7 @@ function Projects() {
       <div className="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
         <SummaryCard
-          title="Total Projects"
+          title="Active Projects"
           value={totalProjects}
           icon={Building2}
         />
@@ -374,9 +524,76 @@ function Projects() {
       </div>
 
 
+      {/* ACTIVE / ARCHIVED TABS */}
+
+      <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-2">
+
+        <div className="grid gap-2 sm:grid-cols-2">
+
+          <ProjectViewButton
+            label="Active Projects"
+            count={activeProjects.length}
+            icon={Building2}
+            active={
+              projectView === "active"
+            }
+            onClick={() =>
+              changeProjectView("active")
+            }
+          />
+
+          <ProjectViewButton
+            label="Archived Projects"
+            count={archivedProjects.length}
+            icon={Archive}
+            active={
+              projectView === "archived"
+            }
+            onClick={() =>
+              changeProjectView("archived")
+            }
+          />
+
+        </div>
+
+      </div>
+
+
+      {/* ARCHIVE NOTICE */}
+
+      {projectView === "archived" && (
+        <div className="mt-5 rounded-2xl border border-[#e2d4b7] bg-[#faf7f0] px-5 py-4">
+
+          <div className="flex items-start gap-3">
+
+            <Archive
+              size={20}
+              className="mt-0.5 shrink-0 text-[#9b7c3f]"
+            />
+
+            <div>
+              <p className="text-sm font-bold text-slate-800">
+                Archived Projects
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                Archived projects are retained as
+                company records. Their documents,
+                expenses and progress history remain
+                available and are not permanently
+                deleted.
+              </p>
+            </div>
+
+          </div>
+
+        </div>
+      )}
+
+
       {/* SEARCH / FILTER */}
 
-      <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-5">
+      <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5">
 
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
 
@@ -394,7 +611,11 @@ function Projects() {
                   event.target.value
                 )
               }
-              placeholder="Search projects..."
+              placeholder={
+                projectView === "archived"
+                  ? "Search archived projects..."
+                  : "Search active projects..."
+              }
               className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 text-sm outline-none focus:border-[#c5a66a]"
             />
 
@@ -406,13 +627,10 @@ function Projects() {
             <FilterButton
               label="All"
               active={
-                statusFilter ===
-                "all"
+                statusFilter === "all"
               }
               onClick={() =>
-                setStatusFilter(
-                  "all"
-                )
+                setStatusFilter("all")
               }
             />
 
@@ -468,6 +686,19 @@ function Projects() {
               }
             />
 
+            <FilterButton
+              label="Cancelled"
+              active={
+                statusFilter ===
+                "cancelled"
+              }
+              onClick={() =>
+                setStatusFilter(
+                  "cancelled"
+                )
+              }
+            />
+
           </div>
 
         </div>
@@ -483,31 +714,42 @@ function Projects() {
 
           <div className="rounded-2xl border border-slate-200 bg-white py-16 text-center">
 
-            <Building2
-              size={42}
-              className="mx-auto text-slate-300"
-            />
+            {projectView === "archived" ? (
+              <Archive
+                size={42}
+                className="mx-auto text-slate-300"
+              />
+            ) : (
+              <Building2
+                size={42}
+                className="mx-auto text-slate-300"
+              />
+            )}
 
             <h2 className="mt-5 text-lg font-bold text-slate-900">
-              No projects found
+              {projectView === "archived"
+                ? "No archived projects"
+                : "No projects found"}
             </h2>
 
             <p className="mt-2 text-sm text-slate-500">
-              {projects.length === 0
-                ? "Your BNE Construction projects will appear here."
-                : "No projects match your current search or filter."}
+              {projectView === "archived"
+                ? archivedProjects.length === 0
+                  ? "Projects you archive will appear here."
+                  : "No archived projects match your current search or filter."
+                : activeProjects.length === 0
+                  ? "Your active BNE Construction projects will appear here."
+                  : "No projects match your current search or filter."}
             </p>
 
 
             {isMainAdmin &&
-              projects.length ===
-                0 && (
+              projectView === "active" &&
+              activeProjects.length === 0 && (
 
               <button
                 onClick={() =>
-                  setShowCreateModal(
-                    true
-                  )
+                  setShowCreateModal(true)
                 }
                 className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-bold text-[#111315]"
               >
@@ -528,16 +770,23 @@ function Projects() {
               (project) => (
 
               <ProjectCard
-                key={
+                key={project.id}
+                project={project}
+                isMainAdmin={isMainAdmin}
+                processing={
+                  processingProjectId ===
                   project.id
-                }
-                project={
-                  project
                 }
                 onOpen={() =>
                   navigate(
                     `/projects/${project.id}`
                   )
+                }
+                onArchive={() =>
+                  archiveProject(project)
+                }
+                onRestore={() =>
+                  restoreProject(project)
                 }
               />
 
@@ -573,9 +822,7 @@ function Projects() {
 
               <button
                 type="button"
-                onClick={
-                  closeCreateModal
-                }
+                onClick={closeCreateModal}
                 className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"
               >
                 <X size={20} />
@@ -585,9 +832,7 @@ function Projects() {
 
 
             <form
-              onSubmit={
-                createProject
-              }
+              onSubmit={createProject}
               className="space-y-5 p-6"
             >
 
@@ -599,17 +844,13 @@ function Projects() {
                 </label>
 
                 <input
-                  value={
-                    form.title
-                  }
+                  value={form.title}
                   onChange={(event) =>
                     setForm(
                       (previous) => ({
                         ...previous,
                         title:
-                          event
-                            .target
-                            .value,
+                          event.target.value,
                       })
                     )
                   }
@@ -627,17 +868,13 @@ function Projects() {
                 </label>
 
                 <textarea
-                  value={
-                    form.description
-                  }
+                  value={form.description}
                   onChange={(event) =>
                     setForm(
                       (previous) => ({
                         ...previous,
                         description:
-                          event
-                            .target
-                            .value,
+                          event.target.value,
                       })
                     )
                   }
@@ -658,17 +895,13 @@ function Projects() {
                   </label>
 
                   <input
-                    value={
-                      form.location
-                    }
+                    value={form.location}
                     onChange={(event) =>
                       setForm(
                         (previous) => ({
                           ...previous,
                           location:
-                            event
-                              .target
-                              .value,
+                            event.target.value,
                         })
                       )
                     }
@@ -684,17 +917,13 @@ function Projects() {
                   </label>
 
                   <select
-                    value={
-                      form.projectStatus
-                    }
+                    value={form.projectStatus}
                     onChange={(event) =>
                       setForm(
                         (previous) => ({
                           ...previous,
                           projectStatus:
-                            event
-                              .target
-                              .value,
+                            event.target.value,
                         })
                       )
                     }
@@ -736,17 +965,13 @@ function Projects() {
 
                   <input
                     type="date"
-                    value={
-                      form.startDate
-                    }
+                    value={form.startDate}
                     onChange={(event) =>
                       setForm(
                         (previous) => ({
                           ...previous,
                           startDate:
-                            event
-                              .target
-                              .value,
+                            event.target.value,
                         })
                       )
                     }
@@ -770,9 +995,7 @@ function Projects() {
                         (previous) => ({
                           ...previous,
                           expectedCompletionDate:
-                            event
-                              .target
-                              .value,
+                            event.target.value,
                         })
                       )
                     }
@@ -800,17 +1023,13 @@ function Projects() {
                     type="number"
                     min="0"
                     step="0.01"
-                    value={
-                      form.budget
-                    }
+                    value={form.budget}
                     onChange={(event) =>
                       setForm(
                         (previous) => ({
                           ...previous,
                           budget:
-                            event
-                              .target
-                              .value,
+                            event.target.value,
                         })
                       )
                     }
@@ -828,9 +1047,7 @@ function Projects() {
 
                 <button
                   type="button"
-                  onClick={
-                    closeCreateModal
-                  }
+                  onClick={closeCreateModal}
                   className="rounded-xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700"
                 >
                   Cancel
@@ -839,9 +1056,7 @@ function Projects() {
 
                 <button
                   type="submit"
-                  disabled={
-                    creating
-                  }
+                  disabled={creating}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#c5a66a] px-5 py-3 text-sm font-bold text-[#111315] disabled:cursor-not-allowed disabled:opacity-50"
                 >
 
@@ -851,9 +1066,7 @@ function Projects() {
                       className="animate-spin"
                     />
                   ) : (
-                    <Plus
-                      size={17}
-                    />
+                    <Plus size={17} />
                   )}
 
                   {creating
@@ -914,22 +1127,91 @@ function SummaryCard({
 }
 
 
-function ProjectCard({
-  project,
-  onOpen,
+function ProjectViewButton({
+  label,
+  count,
+  icon: Icon,
+  active,
+  onClick,
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 transition hover:border-[#d4c29f] hover:shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        active
+          ? "flex items-center justify-between rounded-xl bg-[#111315] px-5 py-4 text-left text-white"
+          : "flex items-center justify-between rounded-xl px-5 py-4 text-left text-slate-600 transition hover:bg-slate-50"
+      }
+    >
+      <span className="flex items-center gap-3">
+
+        <Icon
+          size={18}
+          className={
+            active
+              ? "text-[#d7bb82]"
+              : "text-[#9b7c3f]"
+          }
+        />
+
+        <span className="text-sm font-semibold">
+          {label}
+        </span>
+
+      </span>
+
+      <span
+        className={
+          active
+            ? "rounded-full bg-white/10 px-2.5 py-1 text-xs font-bold text-white"
+            : "rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600"
+        }
+      >
+        {count}
+      </span>
+    </button>
+  )
+}
+
+
+function ProjectCard({
+  project,
+  isMainAdmin,
+  processing,
+  onOpen,
+  onArchive,
+  onRestore,
+}) {
+  return (
+    <div
+      className={`rounded-2xl border bg-white p-6 transition hover:shadow-sm ${
+        project.is_archived
+          ? "border-[#e2d4b7]"
+          : "border-slate-200 hover:border-[#d4c29f]"
+      }`}
+    >
 
       <div className="flex items-start justify-between gap-4">
 
         <div className="min-w-0">
 
-          <ProjectStatus
-            status={
-              project.project_status
-            }
-          />
+          <div className="flex flex-wrap items-center gap-2">
+
+            <ProjectStatus
+              status={
+                project.project_status
+              }
+            />
+
+            {project.is_archived && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[#f1eadc] px-3 py-1 text-xs font-semibold text-[#80662f]">
+                <Archive size={13} />
+                Archived
+              </span>
+            )}
+
+          </div>
 
           <h2 className="mt-3 truncate text-xl font-bold text-slate-900">
             {project.title}
@@ -965,9 +1247,7 @@ function ProjectCard({
 
           <ProjectInfo
             icon={MapPin}
-            value={
-              project.location
-            }
+            value={project.location}
           />
 
         )}
@@ -997,13 +1277,24 @@ function ProjectCard({
         )}
 
 
+        {project.is_archived &&
+          project.archived_at && (
+
+          <ProjectInfo
+            icon={Archive}
+            value={`Archived ${formatDateTime(
+              project.archived_at
+            )}`}
+          />
+
+        )}
+
+
         <ProjectInfo
           icon={CircleDollarSign}
           value={
-            project.budget !==
-              null &&
-            project.budget !==
-              undefined
+            project.budget !== null &&
+            project.budget !== undefined
               ? `Budget ${formatKES(
                   project.budget
                 )}`
@@ -1014,12 +1305,67 @@ function ProjectCard({
       </div>
 
 
-      <button
-        onClick={onOpen}
-        className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
-      >
-        View Project
-      </button>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+
+        <button
+          onClick={onOpen}
+          className="inline-flex w-full items-center justify-center rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
+        >
+          View Project
+        </button>
+
+
+        {isMainAdmin && (
+          project.is_archived ? (
+
+            <button
+              type="button"
+              onClick={onRestore}
+              disabled={processing}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-[#c5a66a] bg-[#faf7f0] px-4 py-3 text-sm font-semibold text-[#80662f] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {processing ? (
+                <LoaderCircle
+                  size={16}
+                  className="animate-spin"
+                />
+              ) : (
+                <ArchiveRestore
+                  size={16}
+                />
+              )}
+
+              {processing
+                ? "Restoring..."
+                : "Restore Project"}
+            </button>
+
+          ) : (
+
+            <button
+              type="button"
+              onClick={onArchive}
+              disabled={processing}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-[#c5a66a] hover:text-[#80662f] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {processing ? (
+                <LoaderCircle
+                  size={16}
+                  className="animate-spin"
+                />
+              ) : (
+                <Archive size={16} />
+              )}
+
+              {processing
+                ? "Archiving..."
+                : "Archive Project"}
+            </button>
+
+          )
+        )}
+
+      </div>
 
     </div>
   )
@@ -1169,6 +1515,24 @@ function formatDate(date) {
 
   return new Date(
     `${date}T00:00:00`
+  ).toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
+  )
+}
+
+
+function formatDateTime(value) {
+  if (!value) {
+    return "—"
+  }
+
+  return new Date(
+    value
   ).toLocaleDateString(
     "en-GB",
     {

@@ -26,6 +26,7 @@ import DashboardLayout from "./layouts/DashboardLayout"
 
 import ProtectedRoute from "./components/ProtectedRoute"
 import RoleRoute from "./components/RoleRoute"
+import Activity from "./pages/Activity"
 
 
 function App() {
@@ -142,11 +143,16 @@ function App() {
                 />
               }
             >
-
+ {/* FINANCILA*/}
               <Route
                 path="/financial-approvals"
                 element={<FinancialApprovals />}
               />
+               {/* ACTIVITY*/}
+              <Route
+  path="/activity"
+  element={<Activity />}
+/>
 
             </Route>
 

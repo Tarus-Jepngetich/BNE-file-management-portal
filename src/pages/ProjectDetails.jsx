@@ -11,6 +11,7 @@ import {
 
 import {
   ArrowLeft,
+  Archive,
   Building2,
   CalendarDays,
   CheckCircle2,
@@ -353,6 +354,10 @@ function ProjectDetails() {
     )
 
 
+  const isArchived =
+    project?.is_archived === true
+
+
   // ==================================================
   // UPDATE PROJECT
   // ==================================================
@@ -367,6 +372,12 @@ function ProjectDetails() {
         if (!isMainAdmin) {
           throw new Error(
             "Only the Main Admin can edit projects."
+          )
+        }
+
+        if (isArchived) {
+          throw new Error(
+            "Archived projects are read-only. Restore this project before editing it."
           )
         }
 
@@ -491,6 +502,12 @@ function ProjectDetails() {
         if (!isMainAdmin) {
           throw new Error(
             "Only the Main Admin can upload project documents."
+          )
+        }
+
+        if (isArchived) {
+          throw new Error(
+            "Archived projects are read-only. Restore this project before adding documents."
           )
         }
 
@@ -724,6 +741,12 @@ function ProjectDetails() {
         setError("")
         setMessage("")
 
+        if (isArchived) {
+          throw new Error(
+            "Archived projects are read-only. Restore this project before deleting documents."
+          )
+        }
+
 
         const {
           error: storageError,
@@ -793,6 +816,12 @@ function ProjectDetails() {
         setSubmittingExpense(true)
         setError("")
         setMessage("")
+
+        if (isArchived) {
+          throw new Error(
+            "Archived projects are read-only. Restore this project before adding expenses."
+          )
+        }
 
 
         if (
@@ -1183,6 +1212,12 @@ function ProjectDetails() {
           )
         }
 
+        if (isArchived) {
+          throw new Error(
+            "Archived projects are read-only. Restore this project before adding progress updates."
+          )
+        }
+
 
         if (
           !progressForm.progressDate
@@ -1471,6 +1506,12 @@ function ProjectDetails() {
         setError("")
         setMessage("")
 
+        if (isArchived) {
+          throw new Error(
+            "Archived projects are read-only. Restore this project before deleting progress updates."
+          )
+        }
+
 
         if (
           progress.media_path
@@ -1606,6 +1647,14 @@ function ProjectDetails() {
               }
             />
 
+
+            {isArchived && (
+              <span className="ml-2 inline-flex items-center gap-1.5 rounded-full bg-[#f1eadc] px-3 py-1 text-xs font-semibold text-[#80662f]">
+                <Archive size={13} />
+                Archived
+              </span>
+            )}
+
             <h1 className="mt-4 text-3xl font-bold text-slate-900">
               {project.title}
             </h1>
@@ -1700,6 +1749,37 @@ function ProjectDetails() {
       </div>
 
 
+      {isArchived && (
+        <div className="mt-6 rounded-2xl border border-[#e2d4b7] bg-[#faf7f0] px-5 py-4">
+          <div className="flex items-start gap-3">
+            <Archive
+              size={20}
+              className="mt-0.5 shrink-0 text-[#9b7c3f]"
+            />
+
+            <div>
+              <p className="text-sm font-bold text-slate-800">
+                Archived Project
+              </p>
+
+              <p className="mt-1 text-sm leading-6 text-slate-600">
+                This project is being kept as a historical company record.
+                Existing documents, expenses and progress remain available,
+                but project details and records cannot be changed until the
+                project is restored from the Projects page.
+              </p>
+
+              {project.archived_at && (
+                <p className="mt-2 text-xs font-semibold text-[#80662f]">
+                  Archived {formatDateTime(project.archived_at)}
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+
       {error && (
         <div className="mt-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           {error}
@@ -1780,7 +1860,7 @@ function ProjectDetails() {
 
         <div className="p-6">
 
-          {isMainAdmin ? (
+          {isMainAdmin && !isArchived ? (
 
             <div className="grid gap-5 md:grid-cols-2">
 
@@ -2097,7 +2177,7 @@ function ProjectDetails() {
           </div>
 
 
-          {isMainAdmin && (
+          {isMainAdmin && !isArchived && (
 
             <button
               onClick={() =>
@@ -2186,7 +2266,7 @@ function ProjectDetails() {
                       </button>
 
 
-                      {isMainAdmin && (
+                      {isMainAdmin && !isArchived && (
 
                         <button
                           onClick={() =>
@@ -2242,20 +2322,22 @@ function ProjectDetails() {
           </div>
 
 
-          <button
-            onClick={() =>
-              setShowExpenseModal(
-                true
-              )
-            }
-            className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
-          >
+          {!isArchived && (
+            <button
+              onClick={() =>
+                setShowExpenseModal(
+                  true
+                )
+              }
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#111315] px-4 py-3 text-sm font-semibold text-white"
+            >
 
-            <Plus size={17} />
+              <Plus size={17} />
 
-            Add Expense
+              Add Expense
 
-          </button>
+            </button>
+          )}
 
         </div>
 
@@ -2518,7 +2600,7 @@ function ProjectDetails() {
           </div>
 
 
-          {isMainAdmin && (
+          {isMainAdmin && !isArchived && (
 
             <button
               onClick={() =>
@@ -2661,7 +2743,7 @@ function ProjectDetails() {
                           )}
 
 
-                          {isMainAdmin && (
+                          {isMainAdmin && !isArchived && (
 
                             <button
                               onClick={() =>
@@ -3664,6 +3746,24 @@ function formatKES(value) {
     Number(
       value || 0
     )
+  )
+}
+
+
+function formatDateTime(value) {
+  if (!value) {
+    return "Not set"
+  }
+
+  return new Date(
+    value
+  ).toLocaleDateString(
+    "en-GB",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }
   )
 }
 
